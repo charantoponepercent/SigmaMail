@@ -120,3 +120,31 @@
     @apply bg-background text-foreground;
   }
 }
+
+.prose {
+  max-width: none;
+  line-height: 1.6;
+}
+
+.prose img {
+  border-radius: 8px;
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.prose a {
+  color: #2563eb;
+  text-decoration: underline;
+}
+
+.group:hover {
+  transition: all 0.15s ease-in-out;
+}
+
+.group:hover .text-gray-900 {
+  color: #2563eb; /* blue on hover */
+}
+
+.group:hover .text-gray-800 {
+  color: #1e3a8a; /* darker on hover */
+}

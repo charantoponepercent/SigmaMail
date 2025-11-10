@@ -35,7 +35,7 @@ export default function DisconnectDialog({
           </DialogDescription>
         </DialogHeader>
         <DialogFooter className="mt-4 flex justify-end space-x-2">
-          <Button variant="outline" onClick={onClose}>
+          <Button variant="secondary" onClick={onClose}>
             Cancel
           </Button>
           <Button
