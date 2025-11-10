@@ -4,6 +4,7 @@ import mongoose from 'mongoose';
 import cors from 'cors';
 import authRoutes from './routes/authRoutes.js';
 import apiRoutes from './routes/apiRoutes.js';
+import userAuthRoutes from './routes/userAuthRoutes.js';
 
 dotenv.config();
 
@@ -23,6 +24,7 @@ app.get('/', (req, res) => {
   res.send('Backend API is working ✅');
 });
 
+app.use("/authe", userAuthRoutes);
 app.use("/auth", authRoutes);
 app.use("/api", apiRoutes);
 

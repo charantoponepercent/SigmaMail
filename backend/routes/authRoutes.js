@@ -8,84 +8,126 @@ import EmailAccount from "../models/EmailAccount.js";
 dotenv.config();
 const router = express.Router();
 
+// 🔹 Initialize OAuth2 client
 const oauth2Client = new google.auth.OAuth2(
   process.env.GOOGLE_CLIENT_ID,
   process.env.GOOGLE_CLIENT_SECRET,
   process.env.GOOGLE_REDIRECT_URI
 );
 
+// 🔹 Define Gmail Scopes
 const SCOPES = [
   "openid",
   "email",
   "profile",
-  "https://www.googleapis.com/auth/gmail.readonly"
+  "https://www.googleapis.com/auth/gmail.readonly",
 ];
 
-// Start OAuth flow. Accepts ?userEmail=<app user email> for dev.
-router.get("/google", (req, res) => {
-  const userEmail = req.query.userEmail || ""; // in prod pass user id in state instead
-  const state = JSON.stringify({ userEmail, ts: Date.now() });
+// ------------------------------
+// 1️⃣ STEP 1: START GOOGLE OAUTH
+// ------------------------------
+router.get("/google", async (req, res) => {
+  try {
+    // The app user’s ID or email is sent as query param
+    const { userId, userEmail } = req.query;
 
-  const url = oauth2Client.generateAuthUrl({
-    access_type: "offline",
-    prompt: "consent", // force refresh_token
-    scope: SCOPES,
-    state,
-  });
+    if (!userId && !userEmail) {
+      return res.status(400).send("Missing user identifier (userId or userEmail)");
+    }
 
-  res.redirect(url);
+    // Pack it safely in state for callback
+    const state = JSON.stringify({ userId, userEmail, timestamp: Date.now() });
+
+    const authUrl = oauth2Client.generateAuthUrl({
+      access_type: "offline",
+      prompt: "consent",
+      scope: SCOPES,
+      state,
+    });
+
+    res.redirect(authUrl);
+  } catch (err) {
+    console.error("❌ Error starting OAuth:", err);
+    res.status(500).send("Failed to start OAuth");
+  }
 });
 
-// Callback
+// ---------------------------------
+// 2️⃣ STEP 2: HANDLE OAUTH CALLBACK
+// ---------------------------------
 router.get("/google/callback", async (req, res) => {
   try {
     const { code, state } = req.query;
-    if (!code) return res.status(400).send("Missing code");
+    if (!code) return res.status(400).send("Missing OAuth code");
 
-    // exchange
+    // Parse user info from state
+    let stateData = {};
+    try {
+      stateData = JSON.parse(state);
+    } catch {
+      console.warn("⚠️ Invalid state data");
+    }
+
+    const userIdFromState = stateData.userId || null;
+    const userEmailFromState = stateData.userEmail || null;
+
+    // Exchange code for tokens
     const { tokens } = await oauth2Client.getToken(code);
     oauth2Client.setCredentials(tokens);
 
-    // get profile (email)
-    const oauth2 = google.oauth2({ auth: oauth2Client, version: "v2" });
-    const profileResp = await oauth2.userinfo.get();
-    const profile = profileResp.data;
-    const gEmail = profile.email;
-    const gId = profile.id;
+    // Get Gmail user info
+    const oauth2 = google.oauth2({ version: "v2", auth: oauth2Client });
+    const profile = await oauth2.userinfo.get();
+    const gmailAddress = profile.data.email;
 
-    // figure out which app user to attach to
-    let userEmailFromState = null;
-    try { userEmailFromState = state ? JSON.parse(state).userEmail : null; } catch(e){}
+    // ✅ Find or create app-level user
+    let appUser;
+    if (userIdFromState) {
+      appUser = await User.findById(userIdFromState);
+    } else if (userEmailFromState) {
+      appUser = await User.findOne({ email: userEmailFromState });
+    }
 
-    // find or create app user; prefer state-provided email, else use Gmail profile email
-    const appUserEmail = userEmailFromState || gEmail;
-    let user = await User.findOne({ email: appUserEmail });
-    if (!user) user = await User.create({ email: appUserEmail, name: profile.name || appUserEmail.split("@")[0] });
+    if (!appUser) {
+      appUser = await User.create({
+        email: userEmailFromState || gmailAddress,
+        name: gmailAddress.split("@")[0],
+      });
+    }
 
-    // store account record (upsert)
-    const upsert = {
-      userId: user._id,
+    // ✅ Save this Gmail account under that user
+    const accountData = {
+      userId: appUser._id,
       provider: "gmail",
-      email: gEmail,
-      googleId: gId,
+      email: gmailAddress,
       accessToken: tokens.access_token,
-      // WARNING: store encrypted in prod!
       refreshToken: tokens.refresh_token || undefined,
       tokenExpiry: tokens.expiry_date ? new Date(tokens.expiry_date) : undefined,
-      scopes: tokens.scope ? tokens.scope.split(" ") : SCOPES,
+      scopes: SCOPES,
     };
 
-    // If refreshToken is missing (Google sometimes doesn't return), keep existing refreshToken if present
-    const existing = await EmailAccount.findOne({ userId: user._id, email: gEmail });
-    if (existing && !upsert.refreshToken) upsert.refreshToken = existing.refreshToken;
+    // If already connected, update; else insert
+    const existing = await EmailAccount.findOne({
+      userId: appUser._id,
+      email: gmailAddress,
+    });
 
-    await EmailAccount.findOneAndUpdate({ userId: user._id, email: gEmail }, upsert, { upsert: true, new: true });
+    if (existing) {
+      await EmailAccount.updateOne({ _id: existing._id }, accountData);
+    } else {
+      await EmailAccount.create(accountData);
+    }
 
-    console.log("Gmail account connected:", gEmail, "for app user:", user.email);
-    // For now show a friendly page
-    res.send(`<h3>Connected ${gEmail} for ${user.email} ✅</h3><p>You can close this window.</p>`);
+    console.log(`✅ Gmail connected: ${gmailAddress} → User: ${appUser.email}`);
+
+    res.send(`
+      <h2>✅ Gmail connected successfully</h2>
+      <p>Account: ${gmailAddress}</p>
+      <p>Linked to: ${appUser.email}</p>
+      <p>You can close this window and return to the app.</p>
+    `);
   } catch (err) {
-    console.error("OAuth callback error:", err);
+    console.error("❌ Error in OAuth callback:", err);
     res.status(500).send("OAuth callback failed");
   }
 });
