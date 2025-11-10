@@ -139,4 +139,25 @@ router.get("/gmail/messages/:id", async (req, res) => {
   }
 });
 
+
+// DELETE /api/accounts/:email → disconnect Gmail
+router.delete("/accounts/:email", async (req, res) => {
+  try {
+    const { email } = req.params;
+    const userId = req.user.id;
+
+    const account = await EmailAccount.findOneAndDelete({ userId, email });
+    if (!account) {
+      return res.status(404).json({ error: "Account not found" });
+    }
+
+    console.log(`🗑️ Disconnected Gmail: ${email} for user ${userId}`);
+    res.json({ message: "Account disconnected successfully", email });
+  } catch (err) {
+    console.error("Error disconnecting account:", err.message);
+    res.status(500).json({ error: "Failed to disconnect Gmail account" });
+  }
+});
+
+
 export default router;
