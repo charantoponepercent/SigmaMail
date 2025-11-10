@@ -3,7 +3,7 @@ import express from 'express';
 import mongoose from 'mongoose';
 import cors from 'cors';
 import authRoutes from './routes/authRoutes.js';
-import mailRoutes from './routes/mailRoutes.js';
+import apiRoutes from './routes/apiRoutes.js';
 
 dotenv.config();
 
@@ -24,7 +24,7 @@ app.get('/', (req, res) => {
 });
 
 app.use("/auth", authRoutes);
-app.use("/api", mailRoutes);
+app.use("/api", apiRoutes);
 
 
 

@@ -4,11 +4,14 @@ const emailAccountSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
   provider: { type: String, default: "gmail" },
   email: { type: String, required: true },
-  accessToken: { type: String },
-  refreshToken: { type: String, required: true },
-  tokenExpiry: { type: Date },
+  googleId: String,
+  accessToken: String,
+  refreshToken: String,     // <--- encrypt in production!
+  tokenExpiry: Date,
   scopes: [String],
   createdAt: { type: Date, default: Date.now },
-});
+}, { timestamps: true });
 
-export default mongoose.model("EmailAccount", emailAccountSchema);
+emailAccountSchema.index({ userId: 1, email: 1 }, { unique: true });
+
+export default mongoose.models.EmailAccount || mongoose.model("EmailAccount", emailAccountSchema);

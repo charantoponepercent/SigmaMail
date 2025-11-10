@@ -1,93 +1,136 @@
 "use client";
 import { useEffect, useState } from "react";
 
-type Email = { id: string; subject: string; from: string };
-type EmailDetail = { id: string; subject: string; from: string; date: string; body: string };
+type Account = { _id: string; email: string; provider: string };
+type Email = { id: string; subject: string; from: string; date?: string };
+type EmailDetail = { id: string; subject: string; from: string; date?: string; body?: string };
 
 export default function Home() {
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [selectedAccount, setSelectedAccount] = useState<Account | null>(null);
   const [emails, setEmails] = useState<Email[]>([]);
   const [selectedEmail, setSelectedEmail] = useState<EmailDetail | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loadingAccounts, setLoadingAccounts] = useState(true);
+  const [loadingEmails, setLoadingEmails] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
 
-  // Fetch list of emails
+  // For dev auth: set this to the app user's email and include header x-user-email in requests
+  const DEV_USER_EMAIL = "your.app.user@example.com";
+  const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+
   useEffect(() => {
-    fetch("http://localhost:4000/api/gmail/messages")
-      .then((res) => res.json())
-      .then((data) => {
-        setEmails(data.messages);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
+    async function loadAccounts() {
+      setLoadingAccounts(true);
+      try {
+        const res = await fetch(`${API_BASE}/api/accounts`, {
+          headers: { "x-user-email": DEV_USER_EMAIL },
+        });
+        const data = await res.json();
+        setAccounts(data.accounts || []);
+        if (data.accounts && data.accounts.length) setSelectedAccount(data.accounts[0]);
+      } catch (err) {
+        console.error(err);
+      }
+      setLoadingAccounts(false);
+    }
+    loadAccounts();
   }, []);
 
-  // Fetch single email by ID
+  useEffect(() => {
+    if (!selectedAccount) return;
+    async function loadEmails() {
+      setLoadingEmails(true);
+      setEmails([]);
+      setSelectedEmail(null);
+      try {
+        const res = await fetch(`${API_BASE}/api/gmail/messages?account=${encodeURIComponent(selectedAccount!.email)}&max=30`, {
+          headers: { "x-user-email": DEV_USER_EMAIL },
+        });
+        const data = await res.json();
+        setEmails(data.messages || []);
+      } catch (err) {
+        console.error(err);
+      }
+      setLoadingEmails(false);
+    }
+    loadEmails();
+  }, [selectedAccount]);
+
   async function openEmail(id: string) {
+    if (!selectedAccount) return;
     setLoadingDetail(true);
     setSelectedEmail(null);
     try {
-      const res = await fetch(`http://localhost:4000/api/gmail/messages/${id}`);
-      const data = await res.json();
-      setSelectedEmail(data);
-    } catch {
+      const res = await fetch(`${API_BASE}/api/gmail/messages/${id}?account=${encodeURIComponent(selectedAccount!.email)}`, {
+        headers: { "x-user-email": DEV_USER_EMAIL },
+      });
+      const d = await res.json();
+      setSelectedEmail(d);
+    } catch (err) {
+      console.error(err);
       alert("Failed to load email");
     }
     setLoadingDetail(false);
   }
 
+  function connectNewAccount() {
+    // open auth URL – include userEmail for dev mapping
+    const url = `${API_BASE}/auth/google?userEmail=${encodeURIComponent(DEV_USER_EMAIL)}`;
+    window.open(url, "_blank", "width=800,height=700");
+  }
+
   return (
     <div className="flex h-screen bg-gray-50 text-gray-900">
-      {/* LEFT SIDEBAR */}
-      <div className="w-1/5 bg-white border-r border-gray-200 p-4">
-        <h2 className="text-lg font-semibold mb-4">📥 Mailbox</h2>
-        <ul className="space-y-2 text-sm">
-          <li className="cursor-pointer hover:text-blue-600">Inbox</li>
-          <li className="cursor-pointer hover:text-blue-600">Starred</li>
-          <li className="cursor-pointer hover:text-blue-600">Sent</li>
-        </ul>
-      </div>
-
-      {/* MIDDLE SECTION – EMAIL LIST */}
-      <div className="w-2/5 border-r border-gray-200 overflow-y-auto">
-        <div className="p-4 border-b bg-white sticky top-0">
-          <h2 className="text-xl font-semibold">Inbox</h2>
+      {/* Left sidebar: accounts */}
+      <div className="w-1/5 bg-white border-r p-4">
+        <div className="mb-4 flex justify-between items-center">
+          <h3 className="font-semibold">Accounts</h3>
+          <button onClick={connectNewAccount} className="text-sm text-blue-600">+ Add</button>
         </div>
 
-        {loading ? (
-          <p className="p-4 text-gray-500">Loading emails…</p>
-        ) : (
-          emails.map((email) => (
-            <div
-              key={email.id}
-              onClick={() => openEmail(email.id)}
-              className="p-4 border-b hover:bg-gray-100 cursor-pointer transition"
-            >
-              <p className="text-sm font-semibold truncate">{email.from}</p>
-              <p className="text-md truncate">{email.subject}</p>
+        {loadingAccounts ? <p>Loading...</p> : (
+          <ul>
+            {accounts.map(acc => (
+              <li key={acc._id}
+                  onClick={() => setSelectedAccount(acc)}
+                  className={`p-2 rounded cursor-pointer ${selectedAccount?.email === acc.email ? "bg-blue-50 font-semibold" : "hover:bg-gray-100"}`}>
+                {acc.email}
+              </li>
+            ))}
+            {accounts.length === 0 && <li className="text-sm text-gray-500">No accounts connected</li>}
+          </ul>
+        )}
+      </div>
+
+      {/* Middle: message list */}
+      <div className="w-2/5 border-r overflow-y-auto">
+        <div className="p-4 border-b bg-white">
+          <h2 className="text-xl font-semibold">
+            {selectedAccount ? `Inbox — ${selectedAccount.email}` : "Inbox"}
+          </h2>
+        </div>
+
+        {loadingEmails ? <p className="p-4">Loading emails…</p> : (
+          emails.map(e => (
+            <div key={e.id} onClick={() => openEmail(e.id)} className="p-4 border-b hover:bg-gray-100 cursor-pointer">
+              <p className="text-sm font-semibold truncate">{e.from}</p>
+              <p className="truncate">{e.subject}</p>
+              <p className="text-xs text-gray-500">{e.date}</p>
             </div>
           ))
         )}
+
       </div>
 
-      {/* RIGHT SECTION – EMAIL DETAIL VIEWER */}
+      {/* Right: detail */}
       <div className="flex-1 bg-white p-6 overflow-y-auto">
-        {!selectedEmail && !loadingDetail && (
-          <p className="text-gray-500">Select an email to view details</p>
-        )}
-
+        {!selectedEmail && !loadingDetail && <p className="text-gray-500">Select an email</p>}
         {loadingDetail && <p className="text-gray-500">Loading message…</p>}
-
         {selectedEmail && (
           <div>
             <h2 className="text-2xl font-bold mb-1">{selectedEmail.subject}</h2>
-            <p className="text-sm text-gray-600 mb-4">
-              From: {selectedEmail.from}
-              <br />
-              Date: {selectedEmail.date}
-            </p>
-            <pre className="whitespace-pre-wrap text-gray-800">
-              {selectedEmail.body}
-            </pre>
+            <p className="text-sm text-gray-600 mb-4">From: {selectedEmail.from} <br/> Date: {selectedEmail.date}</p>
+            <pre className="whitespace-pre-wrap">{selectedEmail.body}</pre>
           </div>
         )}
       </div>

@@ -1,6 +1,6 @@
 import express from "express";
 import { google } from "googleapis";
-import { getAuthorizedClient } from "../utils/googleClient.js";
+import { getAuthorizedClientForAccount } from "../utils/googleClient.js";
 
 const router = express.Router();
 
@@ -8,7 +8,7 @@ router.get("/gmail/messages", async (req, res) => {
   try {
     const email = "toptwopercent.ac.in@gmail.com"; // later this will come from logged-in user
 
-    const authClient = await getAuthorizedClient(email);
+    const authClient = await getAuthorizedClientForAccount(email);
     const gmail = google.gmail({ version: "v1", auth: authClient });
 
     const response = await gmail.users.messages.list({
@@ -74,7 +74,7 @@ router.get("/gmail/messages/:id", async (req, res) => {
     const email = "toptwopercent.ac.in@gmail.com"; // change later for real user
     const { id } = req.params;
 
-    const authClient = await getAuthorizedClient(email);
+    const authClient = await getAuthorizedClientForAccount(email);
     const gmail = google.gmail({ version: "v1", auth: authClient });
 
     const msg = await gmail.users.messages.get({
