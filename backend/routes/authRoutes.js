@@ -1,6 +1,9 @@
 import express from "express";
 import { google } from "googleapis";
 import dotenv from "dotenv";
+import mongoose from "mongoose";
+import EmailAccount from "../models/EmailAccount.js";
+import User from "../models/User.js";
 
 dotenv.config();
 
@@ -12,45 +15,65 @@ const oauth2Client = new google.auth.OAuth2(
   process.env.GOOGLE_REDIRECT_URI
 );
 
-// Scopes define what access your app will have
 const SCOPES = [
   "openid",
   "email",
   "profile",
   "https://www.googleapis.com/auth/gmail.readonly",
-  "https://www.googleapis.com/auth/gmail.metadata",
+  // "https://www.googleapis.com/auth/gmail.metadata"
 ];
 
-// 1️⃣ Route: Start Google OAuth flow
+
+// Step 1: Start Google OAuth
 router.get("/google", (req, res) => {
   const authUrl = oauth2Client.generateAuthUrl({
     access_type: "offline",
-    prompt: "consent", // ensures refresh_token is returned
+    prompt: "consent",
     scope: SCOPES,
   });
   res.redirect(authUrl);
 });
 
-// 2️⃣ Route: Handle Google redirect (callback)
+// Step 2: Handle callback
 router.get("/google/callback", async (req, res) => {
   const code = req.query.code;
-
-  if (!code) return res.status(400).send("Missing authorization code");
 
   try {
     // Exchange code for tokens
     const { tokens } = await oauth2Client.getToken(code);
+    oauth2Client.setCredentials(tokens);
 
-    // Extract tokens (we'll store refresh_token later)
-    console.log("✅ Tokens received:", tokens);
+    // Get Gmail profile info
+    const gmail = google.gmail({ version: "v1", auth: oauth2Client });
+    const profile = await gmail.users.getProfile({ userId: "me" });
 
-    // Show success message temporarily
-    res.send(
-      "<h2>Gmail account connected successfully ✅</h2><p>You can close this tab now.</p>"
+    const emailAddress = profile.data.emailAddress;
+
+    // Check if user exists or create new
+    let user = await User.findOne({ email: emailAddress });
+    if (!user) {
+      user = await User.create({ email: emailAddress, name: emailAddress.split("@")[0] });
+    }
+
+    // Save account info (multi-account ready)
+    await EmailAccount.findOneAndUpdate(
+      { userId: user._id, email: emailAddress },
+      {
+        provider: "gmail",
+        email: emailAddress,
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token,
+        tokenExpiry: new Date(Date.now() + tokens.expiry_date),
+        scopes: tokens.scope?.split(" ") || [],
+      },
+      { upsert: true, new: true }
     );
+
+    console.log("✅ Gmail account connected:", emailAddress);
+    res.send("<h2>Gmail account connected successfully ✅</h2>");
   } catch (err) {
-    console.error("Error during OAuth callback:", err);
-    res.status(500).send("OAuth failed. Check backend logs.");
+    console.error("❌ Error in OAuth callback:", err);
+    res.status(500).send("OAuth failed. Check logs.");
   }
 });
 

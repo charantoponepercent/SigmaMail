@@ -1,27 +1,22 @@
 import express from "express";
 import { google } from "googleapis";
+import { getAuthorizedClient } from "../utils/googleClient.js";
 
 const router = express.Router();
 
 router.get("/gmail/messages", async (req, res) => {
   try {
-    // For now, use your own test token from OAuth console logs
-    const accessToken = "ya29.a0ATi6K2vZXanGayceRcd2_n2cVZV8o4eDSTy1PvqWwQsoNeYiaJ86R7a3znkT5ScEM3qZMud1uLLbw_wWmZQN80Zuw2d78brYapYNcBNlAm7pLqdoxPFMMXSBV3cCqjY-P3jcE8M7n2-P1_2KtoinTKX1-O6QjGuFmV9UfgC5_AV3g11eZFdqf4UsVAXJxwicnp0yzWQaCgYKAWQSARUSFQHGX2Mix2NdobRuyqsiskVutIdtSQ0206";
+    const email = "toptwopercent.ac.in@gmail.com"; // later this will come from logged-in user
 
-    const oauth2Client = new google.auth.OAuth2();
-    oauth2Client.setCredentials({ access_token: accessToken });
+    const authClient = await getAuthorizedClient(email);
+    const gmail = google.gmail({ version: "v1", auth: authClient });
 
-    const gmail = google.gmail({ version: "v1", auth: oauth2Client });
-
-    // Fetch list of messages
     const response = await gmail.users.messages.list({
       userId: "me",
       maxResults: 10,
     });
 
     const messageList = response.data.messages || [];
-
-    // Fetch message details (subject, from, snippet)
     const detailedMessages = await Promise.all(
       messageList.map(async (msg) => {
         const fullMsg = await gmail.users.messages.get({
@@ -32,15 +27,10 @@ router.get("/gmail/messages", async (req, res) => {
         });
 
         const headers = fullMsg.data.payload.headers;
-        const subjectHeader = headers.find((h) => h.name === "Subject");
-        const fromHeader = headers.find((h) => h.name === "From");
+        const subject = headers.find((h) => h.name === "Subject")?.value || "(No Subject)";
+        const from = headers.find((h) => h.name === "From")?.value || "Unknown";
 
-        return {
-          id: msg.id,
-          subject: subjectHeader ? subjectHeader.value : "(No Subject)",
-          from: fromHeader ? fromHeader.value : "Unknown",
-          snippet: fullMsg.data.snippet,
-        };
+        return { id: msg.id, subject, from };
       })
     );
 
@@ -50,5 +40,64 @@ router.get("/gmail/messages", async (req, res) => {
     res.status(500).json({ error: "Failed to fetch emails" });
   }
 });
+
+
+function getMessageBody(payload) {
+  if (!payload) return "";
+
+  // If message has nested parts (multipart)
+  if (payload.parts && payload.parts.length) {
+    for (const part of payload.parts) {
+      // Prefer plain text part
+      if (part.mimeType === "text/plain" && part.body?.data) {
+        return Buffer.from(part.body.data, "base64").toString("utf-8");
+      }
+    }
+    // If no plain text, try recursively inside
+    for (const part of payload.parts) {
+      const inner = getMessageBody(part);
+      if (inner) return inner;
+    }
+  }
+
+  // Fallback: handle simple messages
+  if (payload.body?.data) {
+    return Buffer.from(payload.body.data, "base64").toString("utf-8");
+  }
+
+  return "(No content)";
+}
+
+// ✅ Route: Get full message details
+router.get("/gmail/messages/:id", async (req, res) => {
+  try {
+    const email = "toptwopercent.ac.in@gmail.com"; // change later for real user
+    const { id } = req.params;
+
+    const authClient = await getAuthorizedClient(email);
+    const gmail = google.gmail({ version: "v1", auth: authClient });
+
+    const msg = await gmail.users.messages.get({
+      userId: "me",
+      id,
+      format: "full",
+    });
+
+    const headers = msg.data.payload.headers;
+    const subject =
+      headers.find((h) => h.name === "Subject")?.value || "(No Subject)";
+    const from = headers.find((h) => h.name === "From")?.value || "Unknown";
+    const date = headers.find((h) => h.name === "Date")?.value || "";
+
+    const body = getMessageBody(msg.data.payload);
+
+    res.json({ id, subject, from, date, body });
+  } catch (err) {
+    console.error("❌ Error getting message:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
 
 export default router;
