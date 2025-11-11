@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { API_BASE } from "@/lib/api";
 import DisconnectDialog from "@/components/DisconnectDialog";
 import SecureEmailViewer from "@/components/SecureEmailViewer";
+import DetailsPopover from "@/components/DetailsPopover"
 
 import {
   Search,
@@ -512,9 +513,10 @@ export default function Dashboard() {
           </div>
 
 
+
             {/* SUBJECT HEADER */}
             <div>
-              <h2 className="text-[16px] font-semibold text-gray-900 mb-2">
+              <h2 className="text-[17px] font-semibold text-gray-900 mb-2">
                 {selectedMessage.subject}
               </h2>
               <div className="flex items-center justify-between text-[12px] text-gray-500">
@@ -531,13 +533,24 @@ export default function Dashboard() {
                     </div>
                   </div>
                 </div>
-                <span className="text-[11px] text-gray-500">
-                  {formatDate(selectedMessage.date)}
-                </span>
+
               </div>
             </div>
 
             <hr className="border-gray-200" />
+
+            {/* HEADER SECTION ABOVE BODY */}
+          <div className="flex justify-between items-start border-b border-gray-200 pb-4 mb-4">
+            <div>
+              <h2 className="text-xl font-semibold text-gray-900">{selectedMessage.from?.split("<")[0]}</h2>
+                <DetailsPopover message={selectedMessage} />
+            </div>
+
+            <div className="text-right text-sm text-gray-500 whitespace-nowrap">
+              <span>{formatDate(selectedMessage.date)}</span>
+            </div>
+          </div>
+
 
             {/* BODY */}
             
