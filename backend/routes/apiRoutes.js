@@ -35,88 +35,48 @@ router.get("/gmail/messages", async (req, res) => {
     if (!accountEmail)
       return res.status(400).json({ error: "account query param required" });
 
-    // ✅ Get authorized Gmail API client
     const authClient = await getAuthorizedClientForAccount(
       accountEmail,
       req.user.id
     );
     const gmail = google.gmail({ version: "v1", auth: authClient });
 
-    // ✅ List basic messages (lightweight)
-    const maxResults = parseInt(req.query.max || "20", 10);
+    const maxResults = parseInt(req.query.max || "30", 10);
     const listResp = await gmail.users.messages.list({
       userId: "me",
       maxResults,
     });
 
     const msgs = listResp.data.messages || [];
-    if (msgs.length === 0) {
-      return res.json({ messages: [] });
-    }
 
-    // ✅ Fetch extended headers for each message
     const detailed = await Promise.all(
       msgs.map(async (m) => {
-        try {
-          const msg = await gmail.users.messages.get({
-            userId: "me",
-            id: m.id,
-            format: "metadata",
-            metadataHeaders: [
-              "Subject",
-              "From",
-              "To",
-              "Reply-To",
-              "Date",
-              "Mailed-By",
-              "Signed-By",
-              "X-Mailer",
-            ],
-          });
+        const msg = await gmail.users.messages.get({
+          userId: "me",
+          id: m.id,
+          format: "metadata",
+          metadataHeaders: ["Subject", "From", "Date", "Thread-Id"],
+        });
 
-          const headers = msg.data.payload?.headers || [];
+        const headers = msg.data.payload?.headers || [];
+        const subject =
+          headers.find((h) => h.name === "Subject")?.value || "(No Subject)";
+        const from =
+          headers.find((h) => h.name === "From")?.value || "Unknown";
+        const date = headers.find((h) => h.name === "Date")?.value || "";
 
-          // Helper to find header value easily
-          const getHeader = (name) =>
-            headers.find((h) => h.name.toLowerCase() === name.toLowerCase())
-              ?.value || "";
-
-          // Extract metadata
-          const subject = getHeader("Subject") || "(No Subject)";
-          const from = getHeader("From") || "Unknown";
-          const to = getHeader("To");
-          const replyTo = getHeader("Reply-To");
-          const date = getHeader("Date");
-          const mailedBy =
-            getHeader("Mailed-By") || getHeader("X-Mailer") || "";
-          const signedBy = getHeader("Signed-By") || "";
-          const security = "Standard encryption (TLS)"; // Static placeholder for now
-
-          // Snippet preview
-          const snippet = msg.data.snippet || "";
-
-          return {
-            id: m.id,
-            subject,
-            from,
-            to,
-            replyTo,
-            date,
-            mailedBy,
-            signedBy,
-            security,
-            snippet,
-            account: accountEmail,
-          };
-        } catch (innerErr) {
-          console.error("Error parsing message:", innerErr.message);
-          return null;
-        }
+        return {
+          id: m.id,
+          threadId: msg.data.threadId,
+          subject,
+          from,
+          date,
+          account: accountEmail,
+        };
       })
     );
 
-    // Filter out any failed/null responses
-    res.json({ messages: detailed.filter(Boolean) });
+    res.json({ messages: detailed });
   } catch (err) {
     console.error("Error fetching messages:", err.message);
     res.status(500).json({ error: "Failed to fetch Gmail messages" });
@@ -320,7 +280,11 @@ router.delete("/accounts/:email", async (req, res) => {
   }
 });
 
+
+
 // GET /api/gmail/thread/:id?account=<email>
+// /routes/gmail.js
+
 router.get("/gmail/thread/:id", async (req, res) => {
   try {
     const { id } = req.params;
@@ -328,46 +292,43 @@ router.get("/gmail/thread/:id", async (req, res) => {
     if (!accountEmail)
       return res.status(400).json({ error: "account query param required" });
 
-    // ✅ Authenticate using the connected Gmail account
-    const authClient = await getAuthorizedClientForAccount(accountEmail, req.user.id);
+    const authClient = await getAuthorizedClientForAccount(
+      accountEmail,
+      req.user.id
+    );
     const gmail = google.gmail({ version: "v1", auth: authClient });
 
-    // ✅ Fetch the entire thread (conversation)
     const threadResp = await gmail.users.threads.get({
       userId: "me",
       id,
-      format: "full",
     });
 
-    const threadData = threadResp.data;
-    const messages = threadData.messages || [];
+    const messages = [];
 
-    // ✅ Extract clean data from each message in the thread
-    const parsedMessages = messages.map((msg) => {
-      const headers = msg.payload.headers || [];
-
-      const findHeader = (name) =>
-        headers.find((h) => h.name.toLowerCase() === name.toLowerCase())?.value;
-
-      const subject = findHeader("Subject") || "(No Subject)";
-      const from = findHeader("From") || "Unknown";
-      const to = findHeader("To") || "";
-      const date = findHeader("Date") || "";
-      const replyTo = findHeader("Reply-To") || "";
-      const mailedBy = findHeader("X-Received") || "";
-      const signedBy = findHeader("Received-SPF") || "";
+    for (const msg of threadResp.data.messages || []) {
+      const headers = msg.payload?.headers || [];
+      const subject = headers.find((h) => h.name === "Subject")?.value || "";
+      const from = headers.find((h) => h.name === "From")?.value || "";
+      const to = headers.find((h) => h.name === "To")?.value || "";
+      const date = headers.find((h) => h.name === "Date")?.value || "";
+      const replyTo = headers.find((h) => h.name === "Reply-To")?.value || "";
+      const mailedBy = headers.find((h) => h.name === "Return-Path")?.value || "";
+      const signedBy = headers.find((h) => h.name === "Delivered-To")?.value || "";
       const security = "Standard encryption (TLS)";
 
-      // 🧩 Extract body (HTML or text)
-      function getBody(payload) {
-        if (!payload) return "";
+      // extract HTML or plain text body
+      function extractBody(payload) {
         if (payload.parts) {
           for (const part of payload.parts) {
-            if (part.mimeType === "text/html" && part.body?.data)
+            if (part.mimeType === "text/html" && part.body?.data) {
               return Buffer.from(part.body.data, "base64").toString("utf-8");
+            }
+            if (part.mimeType === "text/plain" && part.body?.data) {
+              return Buffer.from(part.body.data, "base64").toString("utf-8");
+            }
             if (part.parts) {
-              const inner = getBody(part);
-              if (inner) return inner;
+              const nested = extractBody(part);
+              if (nested) return nested;
             }
           }
         }
@@ -376,32 +337,30 @@ router.get("/gmail/thread/:id", async (req, res) => {
         return "";
       }
 
-      const body = getBody(msg.payload);
+      const body = extractBody(msg.payload);
 
-      return {
+      messages.push({
         id: msg.id,
+        threadId: msg.threadId,
         subject,
         from,
         to,
-        date,
         replyTo,
         mailedBy,
         signedBy,
-        security,
+        date,
         body,
-      };
-    });
+        security,
+      });
+    }
 
-    res.json({
-      threadId: threadData.id,
-      messages: parsedMessages,
-      account: accountEmail,
-    });
+    res.json({ threadId: id, messages });
   } catch (err) {
-    console.error("❌ Error fetching thread:", err);
-    res.status(500).json({ error: err?.message || "Failed to fetch thread" });
+    console.error("Error fetching thread:", err);
+    res.status(500).json({ error: "Failed to fetch thread" });
   }
 });
+
 
 
 
