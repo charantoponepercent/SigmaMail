@@ -144,123 +144,6 @@ router.get("/gmail/messages", async (req, res) => {
 //   }
 // });
 
-router.get("/gmail/messages/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const accountEmail = req.query.account;
-    if (!accountEmail)
-      return res.status(400).json({ error: "account query param required" });
-
-    // ✅ Authorize Gmail API
-    const authClient = await getAuthorizedClientForAccount(
-      accountEmail,
-      req.user.id
-    );
-    const gmail = google.gmail({ version: "v1", auth: authClient });
-
-    // ✅ Get full message
-    const msgResp = await gmail.users.messages.get({
-      userId: "me",
-      id,
-      format: "full",
-    });
-
-    const payload = msgResp.data.payload || {};
-    const parts = payload.parts || [];
-    let htmlBody = "";
-    let textBody = "";
-    const attachments = [];
-
-    // ───────────────────────────────
-    // Recursive MIME parser
-    function extractParts(partsArr) {
-      for (const part of partsArr) {
-        if (part.mimeType === "text/html" && part.body?.data) {
-          htmlBody = Buffer.from(part.body.data, "base64").toString("utf8");
-        } else if (part.mimeType === "text/plain" && part.body?.data) {
-          textBody = Buffer.from(part.body.data, "base64").toString("utf8");
-        } else if (part.mimeType?.startsWith("image/") && part.body?.attachmentId) {
-          attachments.push({
-            id: part.body.attachmentId,
-            mimeType: part.mimeType,
-            filename: part.filename,
-            cid: part.headers?.find((h) => h.name === "Content-ID")?.value,
-          });
-        } else if (part.parts) {
-          extractParts(part.parts);
-        }
-      }
-    }
-
-    extractParts(parts);
-
-    // ───────────────────────────────
-    // Inline image embedding (cid → base64)
-    for (const attachment of attachments) {
-      try {
-        const att = await gmail.users.messages.attachments.get({
-          userId: "me",
-          messageId: id,
-          id: attachment.id,
-        });
-
-        const data = att.data.data;
-        if (data) {
-          const base64 = `data:${attachment.mimeType};base64,${data}`;
-          const cid = (attachment.cid || "").replace(/[<>]/g, "");
-          htmlBody = htmlBody.replaceAll(`cid:${cid}`, base64);
-        }
-      } catch (err) {
-        console.warn(`⚠️ Failed to embed inline image: ${attachment.filename}`, err.message);
-      }
-    }
-
-    // ───────────────────────────────
-    // Extract headers with fallbacks
-    const headers = payload.headers || [];
-    const findHeader = (name) =>
-      headers.find((h) => h.name.toLowerCase() === name.toLowerCase())?.value || "";
-
-    const subject = findHeader("Subject") || "(No Subject)";
-    const from = findHeader("From") || "Unknown";
-    const to = findHeader("To");
-    const replyTo = findHeader("Reply-To");
-    const date = findHeader("Date");
-    const mailedBy =
-      findHeader("Mailed-By") ||
-      findHeader("X-Mailer") ||
-      from.match(/@([\w.-]+)/)?.[1] ||
-      "";
-    const signedBy =
-      findHeader("Signed-By") ||
-      findHeader("DKIM-Signature")?.match(/d=([^;]+)/)?.[1] ||
-      "";
-    const security = "Standard encryption (TLS)";
-
-    // ───────────────────────────────
-    // Response
-    res.json({
-      id,
-      subject,
-      from,
-      to,
-      replyTo,
-      date,
-      mailedBy,
-      signedBy,
-      security,
-      body: htmlBody || textBody || "(No content)",
-      account: accountEmail,
-    });
-  } catch (err) {
-    console.error("❌ Error getting message:", err);
-    res.status(500).json({ error: err?.message || "Failed to get message" });
-  }
-});
-
-
-
-
 // DELETE /api/accounts/:email → disconnect Gmail
 router.delete("/accounts/:email", async (req, res) => {
   try {
@@ -282,86 +165,266 @@ router.delete("/accounts/:email", async (req, res) => {
 
 
 
-// GET /api/gmail/thread/:id?account=<email>
-// /routes/gmail.js
+// helper: convert Gmail URL-safe base64 into standard base64
+function fixBase64(str = "") {
+  let fixed = str.replace(/-/g, "+").replace(/_/g, "/").replace(/\s/g, "");
+  while (fixed.length % 4 !== 0) fixed += "=";
+  return fixed;
+}
 
-router.get("/gmail/thread/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const accountEmail = req.query.account;
-    if (!accountEmail)
-      return res.status(400).json({ error: "account query param required" });
+// deep recursive body extractor: returns { htmlBody, textBody, inlineParts, attachmentParts }
+// inlineParts: [{ cid, mimeType, data }] (data may be present on part.body.data)
+// attachmentParts: [{ attachmentId, mimeType, filename }]
+function parsePayloadDeep(payload) {
+  let htmlBody = "";
+  let textBody = "";
+  const inlineParts = []; // inline images with body.data or attachmentId + cid
+  const attachmentParts = []; // attachments with attachmentId
 
-    const authClient = await getAuthorizedClientForAccount(
-      accountEmail,
-      req.user.id
-    );
-    const gmail = google.gmail({ version: "v1", auth: authClient });
+  function walk(part) {
+    if (!part) return;
 
-    const threadResp = await gmail.users.threads.get({
-      userId: "me",
-      id,
-    });
+    // HTML (priority)
+    if (part.mimeType === "text/html" && part.body?.data) {
+      htmlBody = Buffer.from(fixBase64(part.body.data), "base64").toString("utf8");
+    }
 
-    const messages = [];
+    // plain as fallback
+    if (!htmlBody && part.mimeType === "text/plain" && part.body?.data) {
+      textBody = Buffer.from(fixBase64(part.body.data), "base64").toString("utf8");
+    }
 
-    for (const msg of threadResp.data.messages || []) {
-      const headers = msg.payload?.headers || [];
-      const subject = headers.find((h) => h.name === "Subject")?.value || "";
-      const from = headers.find((h) => h.name === "From")?.value || "";
-      const to = headers.find((h) => h.name === "To")?.value || "";
-      const date = headers.find((h) => h.name === "Date")?.value || "";
-      const replyTo = headers.find((h) => h.name === "Reply-To")?.value || "";
-      const mailedBy = headers.find((h) => h.name === "Return-Path")?.value || "";
-      const signedBy = headers.find((h) => h.name === "Delivered-To")?.value || "";
-      const security = "Standard encryption (TLS)";
-
-      // extract HTML or plain text body
-      function extractBody(payload) {
-        if (payload.parts) {
-          for (const part of payload.parts) {
-            if (part.mimeType === "text/html" && part.body?.data) {
-              return Buffer.from(part.body.data, "base64").toString("utf-8");
-            }
-            if (part.mimeType === "text/plain" && part.body?.data) {
-              return Buffer.from(part.body.data, "base64").toString("utf-8");
-            }
-            if (part.parts) {
-              const nested = extractBody(part);
-              if (nested) return nested;
-            }
-          }
-        }
-        if (payload.body?.data)
-          return Buffer.from(payload.body.data, "base64").toString("utf-8");
-        return "";
-      }
-
-      const body = extractBody(msg.payload);
-
-      messages.push({
-        id: msg.id,
-        threadId: msg.threadId,
-        subject,
-        from,
-        to,
-        replyTo,
-        mailedBy,
-        signedBy,
-        date,
-        body,
-        security,
+    // inline image part: has Content-ID OR body.data on image part
+    const cidHeader = part.headers?.find((h) => h.name === "Content-ID");
+    if (cidHeader && part.mimeType?.startsWith("image/")) {
+      inlineParts.push({
+        cid: cidHeader.value.replace(/[<>]/g, ""),
+        mimeType: part.mimeType,
+        data: part.body?.data ?? null,
+        attachmentId: part.body?.attachmentId ?? null,
+        filename: part.filename || null,
       });
     }
 
-    res.json({ threadId: id, messages });
+    // image attachment (real attachmentId)
+    if (part.body?.attachmentId && part.mimeType?.startsWith("image/")) {
+      attachmentParts.push({
+        attachmentId: part.body.attachmentId,
+        mimeType: part.mimeType,
+        filename: part.filename || null,
+        cid: cidHeader?.value ? cidHeader.value.replace(/[<>]/g, "") : null,
+      });
+    }
+
+    if (part.parts) {
+      for (const p of part.parts) walk(p);
+    }
+  }
+
+  walk(payload);
+  return { htmlBody, textBody, inlineParts, attachmentParts };
+}
+
+// helper: fetch an attachment (base64 string) given messageId + attachmentId
+async function fetchAttachmentData(gmailClient, messageId, attachmentId) {
+  const att = await gmailClient.users.messages.attachments.get({
+    userId: "me",
+    messageId,
+    id: attachmentId,
+  });
+  return att.data?.data ? fixBase64(att.data.data) : null; // return standard base64 string
+}
+
+/**
+ * Route: GET /api/gmail/messages/:id
+ * Returns a single message object. It contains:
+ *  - id
+ *  - threadId
+ *  - subject, from, to, date
+ *  - body (HTML with embedded inline images and appended attachments)
+ *
+ * This route will:
+ *  - fetch the message
+ *  - parse deep body + inline images + attachments
+ *  - embed inline images (cid) and append attachments at bottom as <img>
+ */
+router.get("/gmail/messages/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const accountEmail = req.query.account;
+    if (!accountEmail) return res.status(400).json({ error: "account query param required" });
+
+    const authClient = await getAuthorizedClientForAccount(accountEmail, req.user.id);
+    const gmail = google.gmail({ version: "v1", auth: authClient });
+
+    // fetch message (full)
+    const msgResp = await gmail.users.messages.get({ userId: "me", id, format: "full" });
+    const payload = msgResp.data.payload || {};
+
+    const { htmlBody, textBody, inlineParts, attachmentParts } = parsePayloadDeep(payload);
+
+    // 1) Replace inline parts (cid:)
+    let finalHtml = htmlBody || "";
+
+    for (const inline of inlineParts) {
+      let base64Data = inline.data ? fixBase64(inline.data) : null;
+
+      if (!base64Data && inline.attachmentId) {
+        try {
+          base64Data = await fetchAttachmentData(gmail, id, inline.attachmentId);
+        } catch (e) {
+          console.warn("failed to fetch inline attachment", e.message);
+        }
+      }
+
+      if (base64Data) {
+        const dataUrl = `data:${inline.mimeType};base64,${base64Data}`;
+        if (finalHtml) finalHtml = finalHtml.replace(new RegExp(`cid:${inline.cid}`, "g"), dataUrl);
+      }
+    }
+
+    // 2) Append attachment images (real attachments) to HTML bottom
+    for (const att of attachmentParts) {
+      try {
+        const base64 = await fetchAttachmentData(gmail, id, att.attachmentId);
+        if (base64) {
+          finalHtml += `<div style="margin-top:12px;"><img src="data:${att.mimeType};base64,${base64}" style="max-width:100%;border-radius:8px" /></div>`;
+        }
+      } catch (e) {
+        console.warn("failed to fetch attachment", e.message);
+      }
+    }
+
+    // fallback if no HTML
+    const body = finalHtml || (textBody ? `<pre>${textBody}</pre>` : "(No content)");
+
+    // headers
+    const headers = payload.headers || [];
+    const findHeader = (name) => headers.find((h) => h.name.toLowerCase() === name.toLowerCase())?.value || "";
+
+    const messageOut = {
+      id,
+      threadId: msgResp.data.threadId,
+      subject: findHeader("Subject") || "(No Subject)",
+      from: findHeader("From") || "Unknown",
+      to: findHeader("To") || "",
+      replyTo: findHeader("Reply-To") || "",
+      date: findHeader("Date") || "",
+      body,
+      account: accountEmail,
+    };
+
+    res.json(messageOut);
   } catch (err) {
-    console.error("Error fetching thread:", err);
-    res.status(500).json({ error: "Failed to fetch thread" });
+    console.error("Error in /gmail/messages/:id", err);
+    res.status(500).json({ error: err.message || "Failed to fetch message" });
+  }
+});
+
+/**
+ * Route: GET /api/gmail/thread/:id
+ * Accepts either a THREAD ID or a MESSAGE ID. If the given id is a message id,
+ * it will fetch the message first and extract the true thread id.
+ *
+ * Returns: { threadId, messages: [ { id, threadId, subject, from, to, date, body } ] }
+ *
+ * Each message.body is processed the same way as /messages/:id: HTML extraction + inline images + attachments.
+ */
+router.get("/gmail/thread/:id", async (req, res) => {
+  try {
+    const { id: incomingId } = req.params;
+    const accountEmail = req.query.account;
+    if (!accountEmail) return res.status(400).json({ error: "account query param required" });
+
+    const authClient = await getAuthorizedClientForAccount(accountEmail, req.user.id);
+    const gmail = google.gmail({ version: "v1", auth: authClient });
+
+    // Helper: ensure we have a thread id.
+    let threadId = incomingId;
+
+    // If incomingId might be a message id, try retrieving message to get threadId
+    try {
+      // try threads.get first (fastest path)
+      await gmail.users.threads.get({ userId: "me", id: threadId });
+    } catch (e) {
+      // Not a valid threadId; try fetch as message to get threadId
+      try {
+        const msgResp = await gmail.users.messages.get({ userId: "me", id: incomingId, format: "full" });
+        if (msgResp.data.threadId) threadId = msgResp.data.threadId;
+        else {
+          return res.status(400).json({ error: "Unable to resolve thread id from provided id" });
+        }
+      } catch (me) {
+        return res.status(400).json({ error: "Invalid thread/message id" });
+      }
+    }
+
+    // now fetch the thread
+    const threadResp = await gmail.users.threads.get({ userId: "me", id: threadId });
+    const finalMessages = [];
+
+    for (const msg of threadResp.data.messages || []) {
+      const payload = msg.payload || {};
+      const { htmlBody, textBody, inlineParts, attachmentParts } = parsePayloadDeep(payload);
+
+      // build finalHtml for this message
+      let finalHtml = htmlBody || "";
+
+      // replace inline parts
+      for (const inline of inlineParts) {
+        let base64Data = inline.data ? fixBase64(inline.data) : null;
+        if (!base64Data && inline.attachmentId) {
+          try {
+            base64Data = await fetchAttachmentData(gmail, msg.id, inline.attachmentId);
+          } catch (e) {
+            console.warn("failed to fetch inline attachment in thread", e.message);
+          }
+        }
+        if (base64Data) {
+          const dataUrl = `data:${inline.mimeType};base64,${base64Data}`;
+          if (finalHtml) finalHtml = finalHtml.replace(new RegExp(`cid:${inline.cid}`, "g"), dataUrl);
+        }
+      }
+
+      // append attachments
+      for (const att of attachmentParts) {
+        try {
+          const base64 = await fetchAttachmentData(gmail, msg.id, att.attachmentId);
+          if (base64) {
+            finalHtml += `<div style="margin-top:12px;"><img src="data:${att.mimeType};base64,${base64}" style="max-width:100%;border-radius:8px" /></div>`;
+          }
+        } catch (e) {
+          console.warn("failed to fetch thread attachment", e.message);
+        }
+      }
+
+      const body = finalHtml || (textBody ? `<pre>${textBody}</pre>` : "(no content)");
+
+      // headers
+      const headers = payload.headers || [];
+      const findHeader = (name) => headers.find((h) => h.name.toLowerCase() === name.toLowerCase())?.value || "";
+
+      finalMessages.push({
+        id: msg.id,
+        threadId: msg.threadId,
+        subject: findHeader("Subject") || "(No Subject)",
+        from: findHeader("From") || "Unknown",
+        to: findHeader("To") || "",
+        date: findHeader("Date") || "",
+        body,
+      });
+    }
+
+    res.json({ threadId, messages: finalMessages });
+  } catch (err) {
+    console.error("Error in /gmail/thread/:id", err);
+    res.status(500).json({ error: err.message || "Failed to fetch thread" });
   }
 });
 
 
 
-
 export default router;
+
+
+

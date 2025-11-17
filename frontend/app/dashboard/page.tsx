@@ -134,42 +134,56 @@ export default function Dashboard() {
     return date.toLocaleString("en-US", options);
   }
 
-  // ✅ Open a thread when clicked
-  async function openMessage(id: string) {
-    const token = localStorage.getItem("token");
-    if (!selectedAccount) return;
 
-    try {
-      // Step 1: Get threadId from message
-      const msgRes = await fetch(
-        `${API_BASE}/api/gmail/messages/${id}?account=${encodeURIComponent(
-          selectedAccount
-        )}`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      const msgData = await msgRes.json();
+    async function openMessage(id: string) {
+      console.log("openMessage CALLED with id:", id);
+      const token = localStorage.getItem("token");
+      if (!selectedAccount) return;
 
-      // Step 2: Fetch full thread
-      if (!msgData.threadId) {
-        const fallbackKey = msgData.id as string;
-        setSelectedMessage({ messages: [msgData], threadId: fallbackKey });
-        setSelectedThreadId(fallbackKey);
-        return;
+      try {
+        // Step 1: fetch single message (ensures we get threadId and a single-message fallback)
+        const msgRes = await fetch(
+          `${API_BASE}/api/gmail/messages/${id}?account=${encodeURIComponent(selectedAccount)}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        if (!msgRes.ok) throw new Error("Failed to fetch message");
+        const msgData = await msgRes.json();
+
+        // If the message didn't have a threadId for some reason, show just that message
+        if (!msgData.threadId) {
+          setSelectedMessage({ messages: [msgData], threadId: msgData.id });
+          setSelectedThreadId(msgData.id);
+          return;
+        }
+
+        // Step 2: fetch full thread using thread id (thread route is resilient)
+        const threadRes = await fetch(
+          `${API_BASE}/api/gmail/thread/${msgData.threadId}?account=${encodeURIComponent(selectedAccount)}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        if (!threadRes.ok) {
+          // try fallback: call thread route with original message id (route auto-resolves)
+          const fallback = await fetch(
+            `${API_BASE}/api/gmail/thread/${id}?account=${encodeURIComponent(selectedAccount)}`,
+            { headers: { Authorization: `Bearer ${token}` } }
+          );
+          if (!fallback.ok) throw new Error("Failed to fetch thread");
+          const fallbackData = await fallback.json();
+          setSelectedMessage(fallbackData);
+          setSelectedThreadId(fallbackData.threadId || id);
+          return;
+        }
+
+        const threadData = await threadRes.json();
+
+        setSelectedMessage(threadData);
+        setSelectedThreadId(threadData.threadId || msgData.threadId);
+      } catch (err) {
+        console.error("Error loading thread:", err);
+        // optionally: show toast to user
       }
-
-      const threadRes = await fetch(
-        `${API_BASE}/api/gmail/thread/${msgData.threadId}?account=${encodeURIComponent(
-          selectedAccount
-        )}`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      const threadData = await threadRes.json();
-      setSelectedMessage({ ...threadData, threadId: msgData.threadId });
-      setSelectedThreadId(msgData.threadId);
-    } catch (err) {
-      console.error("Error loading thread:", err);
     }
-  }
+
 
   function connectNewGmail() {
     const u = JSON.parse(localStorage.getItem("user") || "{}");
