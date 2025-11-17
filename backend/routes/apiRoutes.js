@@ -29,67 +29,11 @@ router.get("/accounts", async (req, res) => {
 // -----------------------------------------------------------
 // GET /api/gmail/messages?account=<email>&max=20
 // -----------------------------------------------------------
-router.get("/gmail/messages", async (req, res) => {
-  try {
-    const accountEmail = req.query.account;
-    if (!accountEmail)
-      return res.status(400).json({ error: "account query param required" });
-
-    const authClient = await getAuthorizedClientForAccount(
-      accountEmail,
-      req.user.id
-    );
-    const gmail = google.gmail({ version: "v1", auth: authClient });
-
-    const maxResults = parseInt(req.query.max || "30", 10);
-    const listResp = await gmail.users.messages.list({
-      userId: "me",
-      maxResults,
-    });
-
-    const msgs = listResp.data.messages || [];
-
-    const detailed = await Promise.all(
-      msgs.map(async (m) => {
-        const msg = await gmail.users.messages.get({
-          userId: "me",
-          id: m.id,
-          format: "metadata",
-          metadataHeaders: ["Subject", "From", "Date", "Thread-Id"],
-        });
-
-        const headers = msg.data.payload?.headers || [];
-        const subject =
-          headers.find((h) => h.name === "Subject")?.value || "(No Subject)";
-        const from =
-          headers.find((h) => h.name === "From")?.value || "Unknown";
-        const date = headers.find((h) => h.name === "Date")?.value || "";
-
-        return {
-          id: m.id,
-          threadId: msg.data.threadId,
-          subject,
-          from,
-          date,
-          account: accountEmail,
-        };
-      })
-    );
-
-    res.json({ messages: detailed });
-  } catch (err) {
-    console.error("Error fetching messages:", err.message);
-    res.status(500).json({ error: "Failed to fetch Gmail messages" });
-  }
-});
-
-// -----------------------------------------------------------
-// GET /api/gmail/messages/:id?account=<email>
-// -----------------------------------------------------------
-// router.get("/gmail/messages/:id", async (req, res) => {
+// router.get("/gmail/messages", async (req, res) => {
 //   try {
-//     const { id } = req.params;
 //     const accountEmail = req.query.account;
+//     const label = req.query.label || "INBOX";
+
 //     if (!accountEmail)
 //       return res.status(400).json({ error: "account query param required" });
 
@@ -99,50 +43,162 @@ router.get("/gmail/messages", async (req, res) => {
 //     );
 //     const gmail = google.gmail({ version: "v1", auth: authClient });
 
-//     const msgResp = await gmail.users.messages.get({
+//     const maxResults = parseInt(req.query.max || "30", 10);
+//     const listResp = await gmail.users.messages.list({
 //       userId: "me",
-//       id,
-//       format: "full",
+//       labelIds: [label],
+//       maxResults,
 //     });
 
-//     const payload = msgResp.data.payload || {};
-//     const headers = payload.headers || [];
+//     const msgs = listResp.data.messages || [];
 
-//     const subject =
-//       headers.find((h) => h.name === "Subject")?.value || "(No Subject)";
-//     const from =
-//       headers.find((h) => h.name === "From")?.value || "Unknown";
-//     const date = headers.find((h) => h.name === "Date")?.value || "";
+//     const detailed = await Promise.all(
+//       msgs.map(async (m) => {
+//         const msg = await gmail.users.messages.get({
+//           userId: "me",
+//           id: m.id,
+//           format: "metadata",
+//           metadataHeaders: ["Subject", "From", "Date", "Thread-Id"],
+//         });
 
-//     // Recursive function to extract body safely
-//     function getBody(node) {
-//       if (!node) return "";
-//       if (node.parts && node.parts.length) {
-//         // Prefer text/plain
-//         for (const p of node.parts) {
-//           if (p.mimeType === "text/plain" && p.body?.data) {
-//             return Buffer.from(p.body.data, "base64").toString("utf-8");
-//           }
-//         }
-//         // Recurse deeper
-//         for (const p of node.parts) {
-//           const inner = getBody(p);
-//           if (inner) return inner;
-//         }
-//       }
-//       if (node.body?.data)
-//         return Buffer.from(node.body.data, "base64").toString("utf-8");
-//       return "";
-//     }
+//         const headers = msg.data.payload?.headers || [];
+//         const subject =
+//           headers.find((h) => h.name === "Subject")?.value || "(No Subject)";
+//         const from =
+//           headers.find((h) => h.name === "From")?.value || "Unknown";
+//         const date = headers.find((h) => h.name === "Date")?.value || "";
 
-//     const body = getBody(payload);
+//         return {
+//           id: m.id,
+//           threadId: msg.data.threadId,
+//           subject,
+//           from,
+//           date,
+//           account: accountEmail,
+//         };
+//       })
+//     );
 
-//     res.json({ id, subject, from, date, body, account: accountEmail });
+//     res.json({ messages: detailed });
 //   } catch (err) {
-//     console.error("Error getting message:", err.message);
-//     res.status(500).json({ error: "Failed to get message" });
+//     console.error("Error fetching messages:", err.message);
+//     res.status(500).json({ error: "Failed to fetch Gmail messages" });
 //   }
 // });
+
+router.get("/gmail/messages", async (req, res) => {
+  try {
+    const accountEmail = req.query.account;
+    const max = Number(req.query.max) || 30;
+    const label = req.query.label || "INBOX";
+    const pageToken = req.query.pageToken || undefined;
+
+    if (!accountEmail)
+      return res.status(400).json({ error: "account query param required" });
+
+    const authClient = await getAuthorizedClientForAccount(
+      accountEmail,
+      req.user.id
+    );
+    const gmail = google.gmail({ version: "v1", auth: authClient });
+
+    // Step 1: Get message metadata (IDs)
+    const listResp = await gmail.users.messages.list({
+      userId: "me",
+      maxResults: max,
+      labelIds: [label],
+      pageToken,
+    });
+
+    const ids = listResp.data.messages || [];
+
+    // Step 2: Fetch full message headers for preview
+    const messages = [];
+    for (const item of ids) {
+      const msg = await gmail.users.messages.get({
+        userId: "me",
+        id: item.id,
+        format: "metadata",
+        metadataHeaders: ["Subject", "From", "Date", "Thread-Id"],
+      });
+
+      const headers = msg.data.payload.headers;
+
+      const find = (name) =>
+        headers.find((h) => h.name === name)?.value || "";
+
+      messages.push({
+        id: msg.data.id,
+        threadId: msg.data.threadId,
+        subject: find("Subject"),
+        from: find("From"),
+        date: find("Date"),
+      });
+    }
+
+    res.json({
+      messages,
+      nextPageToken: listResp.data.nextPageToken || null,
+    });
+  } catch (err) {
+    console.error("Error during pagination fetch:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// router.get("/gmail/labels", async (req, res) => {
+//   try {
+//     const account = req.query.account;
+//     if (!account) return res.status(400).json({ error: "Missing account" });
+
+//     const auth = await getAuthorizedClientForAccount(account, req.user.id);
+//     const gmail = google.gmail({ version: "v1", auth });
+
+//     const LABEL_MAP = {
+//       INBOX: "INBOX",
+//       UNREAD: "UNREAD",
+//       SENT: "SENT",
+//       TRASH: "TRASH",
+//       ARCHIVE: "ALL",
+//     };
+
+//     const results = {};
+
+//     for (const [key, gmailLabel] of Object.entries(LABEL_MAP)) {
+//       // total messages
+//       const totalRes = await gmail.users.messages.list({
+//         userId: "me",
+//         labelIds: gmailLabel === "ALL" ? undefined : [gmailLabel],
+//         includeSpamTrash: true,
+//         maxResults: 1,
+//       });
+
+//       const total = totalRes.data.resultSizeEstimate || 0;
+
+//       // unread messages
+//       const unreadRes = await gmail.users.messages.list({
+//         userId: "me",
+//         labelIds:
+//           gmailLabel === "ALL"
+//             ? ["UNREAD"]
+//             : [gmailLabel, "UNREAD"],
+//         includeSpamTrash: true,
+//         maxResults: 1,
+//       });
+
+//       const unread = unreadRes.data.resultSizeEstimate || 0;
+
+//       results[key] = { total, unread };
+//     }
+
+//     res.json(results);
+//   } catch (err) {
+//     console.error("Label API Error:", err);
+//     res.status(500).json({ error: "Failed to load counts" });
+//   }
+// });
+
+
 
 // DELETE /api/accounts/:email → disconnect Gmail
 router.delete("/accounts/:email", async (req, res) => {

@@ -1,3 +1,5 @@
+/* eslint-disable react-hooks/exhaustive-deps */
+/* eslint-disable react/jsx-no-undef */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
@@ -6,6 +8,7 @@ import { useRouter } from "next/navigation";
 import { API_BASE } from "@/lib/api";
 import DisconnectDialog from "@/components/DisconnectDialog";
 import ThreadViewer from "@/components/ThreadViewer";
+import ThreadSkeleton from './ThreadSkeleton.js'
 
 import {
   Search,
@@ -43,11 +46,15 @@ type DashboardThread = { messages: DashboardMessage[]; threadId?: string };
 export default function Dashboard() {
   const router = useRouter();
 
+  // const [labelCounts, setLabelCounts] = useState<any>({});
   const [user, setUser] = useState<DashboardUser | null>(null);
+  const [loadingThread, setLoadingThread] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [accounts, setAccounts] = useState<DashboardAccount[]>([]);
+  const [currentFolder, setCurrentFolder] = useState("INBOX");
   const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
   const [messages, setMessages] = useState<DashboardMessage[]>([]);
+  const [nextPageToken, setNextPageToken] = useState<string | null>(null);
   const [selectedMessage, setSelectedMessage] =
     useState<DashboardThread | null>(null);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
@@ -76,6 +83,13 @@ export default function Dashboard() {
   );
 
   useEffect(() => {
+    if (selectedAccount) {
+      loadMessages(selectedAccount, currentFolder);
+      // loadLabelCounts(selectedAccount);
+    }
+  }, [selectedAccount, currentFolder]);
+
+  useEffect(() => {
     setMounted(true);
     const token = localStorage.getItem("token");
     const userData = localStorage.getItem("user");
@@ -88,38 +102,65 @@ export default function Dashboard() {
     loadAccounts(token);
   }, [router, loadAccounts]);
 
-  // ✅ Load & group messages by thread
-  async function loadMessages(account: string) {
-    setLoadingMessages(true);
-    setSelectedMessage(null);
-    setSelectedThreadId(null);
-    const token = localStorage.getItem("token");
 
+  // async function loadLabelCounts(account: string) {
+  //   const token = localStorage.getItem("token");
+  
+  //   const res = await fetch(
+  //     `${API_BASE}/api/gmail/labels?account=${encodeURIComponent(account)}`,
+  //     { headers: { Authorization: `Bearer ${token}` } }
+  //   );
+  
+  //   const data = await res.json();
+  //   setLabelCounts(data);
+  // }
+
+  // ✅ Load & group messages by thread
+  async function loadMessages(account: string, label = currentFolder, pageToken?: string) {
+    setLoadingMessages(true);
+  
+    const token = localStorage.getItem("token");
+  
     try {
       const res = await fetch(
         `${API_BASE}/api/gmail/messages?account=${encodeURIComponent(
           account
-        )}&max=30`,
-        { headers: { Authorization: `Bearer ${token}` } }
+        )}&label=${label}&max=30${pageToken ? `&pageToken=${pageToken}` : ""}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
       );
-
+  
       const data = await res.json();
-
-      // ✅ Group messages by threadId
-      const grouped = Object.values(
-        data.messages.reduce((acc: any, msg: any) => {
+      const rawMessages = (Array.isArray(data?.messages)
+        ? data.messages
+        : []) as DashboardMessage[];
+  
+      const grouped: DashboardMessage[] = Object.values(
+        rawMessages.reduce<Record<string, DashboardMessage>>((acc, msg) => {
           const key = msg.threadId || msg.id;
-          if (!acc[key]) acc[key] = { ...msg, count: 1 };
-          else acc[key].count += 1;
+          if (!acc[key]) {
+            acc[key] = { ...msg, count: 1 };
+          } else {
+            acc[key].count = (acc[key].count || 0) + 1;
+          }
           return acc;
         }, {})
       );
-
-      setMessages(grouped as DashboardMessage[]);
+  
+      if (pageToken) {
+        // append
+        setMessages((prev) => [...prev, ...grouped]);
+      } else {
+        // first page load
+        setMessages(grouped);
+      }
+  
+      setNextPageToken(data.nextPageToken || null);
     } catch (err) {
-      console.error(err);
+      console.error("Pagination error:", err);
     }
-
+  
     setLoadingMessages(false);
   }
 
@@ -139,6 +180,8 @@ export default function Dashboard() {
       console.log("openMessage CALLED with id:", id);
       const token = localStorage.getItem("token");
       if (!selectedAccount) return;
+
+      setLoadingThread(true);
 
       try {
         // Step 1: fetch single message (ensures we get threadId and a single-message fallback)
@@ -181,6 +224,10 @@ export default function Dashboard() {
       } catch (err) {
         console.error("Error loading thread:", err);
         // optionally: show toast to user
+      }
+
+      finally {
+        setLoadingThread(false);
       }
     }
 
@@ -238,17 +285,20 @@ export default function Dashboard() {
       null;
     return fromSelected ?? null;
   }
+  
   function getSelectedIndex(visible: DashboardMessage[]) {
     const key = getCurrentThreadKey();
     if (!key) return -1;
     return visible.findIndex((m) => (m.threadId || m.id) === key);
   }
+
   function scrollThreadIntoView(threadKey: string) {
     const el = document.querySelector(
       `[data-thread-id="${threadKey}"]`
     ) as HTMLElement | null;
     if (el) el.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }
+
   function goPrevThread() {
     const key = getCurrentThreadKey();
     if (!key) return;
@@ -279,10 +329,7 @@ export default function Dashboard() {
     localStorage.removeItem("user");
     router.push("/login");
   }
-
-  useEffect(() => {
-    if (selectedAccount) loadMessages(selectedAccount);
-  }, [selectedAccount]);
+  
 
   if (!mounted) return null;
 
@@ -369,6 +416,46 @@ export default function Dashboard() {
                 ))
               )}
             </div>
+          </div>
+          {/* MAILBOX FILTERS */}
+          <div className="space-y-1.5">
+            {[
+              { name: "Inbox", id: "INBOX", icon: Inbox },
+              { name: "Unread", id: "UNREAD", icon: Inbox },
+              { name: "Sent", id: "SENT", icon: Send },
+              { name: "Archive", id: "ARCHIVE", icon: Archive },
+              { name: "Trash", id: "TRASH", icon: Trash2 },
+            ].map((f) => (
+              <div
+                key={f.id}
+                onClick={() => {
+                  setCurrentFolder(f.id);
+                  if (selectedAccount) loadMessages(selectedAccount, f.id);
+                }}
+                className={`flex items-center justify-between px-3 py-2.5 cursor-pointer rounded-lg transition-all
+                  ${
+                    currentFolder === f.id
+                      ? "bg-blue-50 text-blue-700 font-medium shadow-sm"
+                      : "hover:bg-gray-100 text-gray-800"
+                  }
+                `}
+              >
+                {/* left side icon + name */}
+                <div className="flex items-center gap-3">
+                  <f.icon className="w-4 h-4" />
+                  <span className="text-sm">{f.name}</span>
+                </div>
+
+                {/* right side badge
+                <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">
+                  {
+                    f.id === "UNREAD"
+                      ? labelCounts?.INBOX?.unread ?? 0
+                      : labelCounts?.[f.id]?.total ?? 0
+                  }
+                </span> */}
+              </div>
+            ))}
           </div>
         </div>
 
@@ -478,27 +565,44 @@ export default function Dashboard() {
                 </div>
               ))
           )}
+
+          {nextPageToken && selectedAccount && (
+            <button
+              onClick={() => {
+                const prevThread = selectedThreadId;
+                loadMessages(selectedAccount, currentFolder, nextPageToken).then(() => {
+                  if (prevThread) setSelectedThreadId(prevThread);
+                });
+              }}
+              className="w-full py-2 mt-3 text-blue-600 hover:bg-blue-50 rounded"
+            >
+              Load more
+
+            </button>
+          )}
         </div>
       </section>
 
       {/* RIGHT PANEL */}
       <section className="flex-1 bg-white overflow-y-auto p-6">
-  {selectedMessage ? (
-    <ThreadViewer
-      thread={selectedMessage}
-      onClose={() => {
-        setSelectedMessage(null);
-        setSelectedThreadId(null);
-      }}
-      onPrev={goPrevThread}
-      onNext={goNextThread}
-    />
-  ) : (
-    <div className="flex h-full items-center justify-center text-gray-400 italic">
-      Select an email to preview
-    </div>
-  )}
-</section>
+      {loadingThread ? (
+      <ThreadSkeleton />
+      ) : selectedMessage ? (
+        <ThreadViewer
+          thread={selectedMessage}
+          onClose={() => {
+            setSelectedMessage(null);
+            setSelectedThreadId(null);
+          }}
+          onPrev={goPrevThread}
+          onNext={goNextThread}
+        />
+      ) : (
+        <div className="flex h-full items-center justify-center text-gray-400 italic">
+          Select an email to preview
+        </div>
+      )}
+      </section>
 
 
       <DisconnectDialog

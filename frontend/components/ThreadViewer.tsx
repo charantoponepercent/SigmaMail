@@ -1,17 +1,58 @@
+/* eslint-disable react-hooks/rules-of-hooks */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import React from "react";
+import React, { useMemo } from "react";
 import { format } from "date-fns";
 import { X, ChevronLeft, ChevronRight, Reply, ReplyAll, Forward } from "lucide-react";
 import SecureEmailViewer from "@/components/SecureEmailViewer";
 import DetailsPopover from "@/components/DetailsPopover";
+
+function extractQuotedSections(html: string) {
+  if (!html) return { clean: "", quotes: [] as string[] };
+
+  let working = html;
+
+  const quotes: string[] = [];
+
+  // 1) Extract common Gmail quoted wrapper
+  // capture <div class="gmail_quote"> ... </div>
+  const gmailQuoteRegex = /<div[^>]*class=["'][^"'>]*gmail_quote[^"'>]*["'][^>]*>[\s\S]*?<\/div>/gi;
+  working = working.replace(gmailQuoteRegex, (m) => {
+    quotes.push(m);
+    return "";
+  });
+
+  // 2) Extract blockquote sections (Outlook, replies)
+  const blockquoteRegex = /<blockquote[^>]*>[\s\S]*?<\/blockquote>/gi;
+  working = working.replace(blockquoteRegex, (m) => {
+    quotes.push(m);
+    return "";
+  });
+
+  // 3) Extract forwarded "On DATE, X wrote:" lines and everything after (heuristic)
+  // We'll try to capture "On <date>, <name> wrote:" and subsequent content
+  const onWroteRegex = /On\s.+?wrote:([\s\S]*)/gi;
+  working = working.replace(onWroteRegex, (m, g1) => {
+    quotes.push(g1 || m);
+    return "";
+  });
+
+  // 4) Remove common > quoted lines from plaintext
+  working = working.replace(/(^|\n)[ \t]*>[^\n]*/g, "");
+
+  // Trim whitespace
+  working = working.trim();
+
+  return { clean: working, quotes };
+}
 
 export default function ThreadViewer({
   thread,
   onClose,
   onPrev,
   onNext,
+  // expect parent to pass accountEmail via context or prop; fallback to empty
 }: {
   thread: any;
   onClose?: () => void;
@@ -26,39 +67,37 @@ export default function ThreadViewer({
     );
   }
 
+  // sort ascending (oldest -> newest)
+  const sorted = useMemo(() => {
+    const copy = [...thread.messages];
+    copy.sort((a, b) => {
+      const ta = a.date ? new Date(a.date).getTime() : 0;
+      const tb = b.date ? new Date(b.date).getTime() : 0;
+      return ta - tb;
+    });
+    return copy;
+  }, [thread]);
+
+  // try to get accountEmail from thread or from global (if available)
+  const accountEmail = (thread.account || (thread.messages[0] && thread.messages[0].account)) || "";
+
   return (
     <div className="space-y-6">
-      {/* ─────────────────────────── */}
-      {/* Top Toolbar & Subject */}
-      {/* ─────────────────────────── */}
+      {/* Header */}
       <div className="flex items-center justify-between">
         <h2 className="text-[18px] font-semibold text-gray-900 truncate">
-          {thread.messages[0].subject || "(No Subject)"}{" "}
-          <span className="text-gray-400 text-sm">
-            [{thread.messages.length}]
-          </span>
+          {sorted[sorted.length - 1].subject || "(No Subject)"}{" "}
+          <span className="text-gray-400 text-sm">[{sorted.length}]</span>
         </h2>
 
         <div className="flex items-center gap-2">
-          <button
-            onClick={onPrev}
-            title="Previous conversation"
-            className="p-2 border rounded-md hover:bg-gray-50"
-          >
+          <button onClick={onPrev} title="Previous conversation" className="p-2 border rounded-md hover:bg-gray-50">
             <ChevronLeft className="w-4 h-4 text-gray-600" />
           </button>
-          <button
-            onClick={onNext}
-            title="Next conversation"
-            className="p-2 border rounded-md hover:bg-gray-50"
-          >
+          <button onClick={onNext} title="Next conversation" className="p-2 border rounded-md hover:bg-gray-50">
             <ChevronRight className="w-4 h-4 text-gray-600" />
           </button>
-          <button
-            onClick={onClose}
-            title="Close"
-            className="p-2 border rounded-md hover:bg-gray-50"
-          >
+          <button onClick={onClose} title="Close" className="p-2 border rounded-md hover:bg-gray-50">
             <X className="w-4 h-4 text-gray-600" />
           </button>
         </div>
@@ -66,11 +105,10 @@ export default function ThreadViewer({
 
       <div className="border-b border-gray-200" />
 
-      {/* ─────────────────────────── */}
-      {/* Threaded Messages (chat-style bubbles) */}
-      {/* ─────────────────────────── */}
-      {thread.messages.map((msg: any, idx: number) => {
-        const isLast = idx === thread.messages.length - 1;
+      {/* messages */}
+      {sorted.map((msg: any, idx: number) => {
+        const isLast = idx === sorted.length - 1;
+        const { clean, quotes } = extractQuotedSections(msg.body || "");
 
         return (
           <div key={msg.id} className="flex items-start gap-3">
@@ -78,10 +116,11 @@ export default function ThreadViewer({
             <div className="w-9 h-9 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-semibold text-sm uppercase mt-1">
               {msg.from?.[0] || "?"}
             </div>
+
             {/* Bubble */}
             <div className="flex-1 max-w-[760px]">
               <div className="rounded-2xl border border-gray-200 bg-white shadow-sm px-4 py-3">
-                {/* Header row */}
+                {/* Header */}
                 <div className="flex items-start justify-between">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
@@ -98,16 +137,41 @@ export default function ThreadViewer({
                     {msg.date ? format(new Date(msg.date), "MMM d, h:mm a") : ""}
                   </span>
                 </div>
-                {/* Body */}
+
+                {/* Body (clean version) */}
                 <div className="mt-3">
                   <SecureEmailViewer
-                    html={msg.body || ""}
+                    html={clean || ""}
                     senderEmail={msg.from || ""}
+                    messageId={msg.id}
+                    accountEmail={accountEmail}
                     theme="light"
                   />
                 </div>
-                {/* Footer (optional actions UI only) */}
-                <div className="flex items-center gap-2 mt-3">
+
+                {/* quoted collapsible
+                {quotes.length > 0 && (
+                  <details className="mt-3" data-quoted>
+                    <summary className="text-sm text-gray-500 cursor-pointer hover:underline">
+                      Show quoted text
+                    </summary>
+                    <div className="mt-2 p-3 bg-gray-50 rounded-md border border-gray-100">
+                      {quotes.map((q, i) => (
+                        <div key={i} className="mb-3">
+                          <SecureEmailViewer
+                            html={q}
+                            senderEmail={msg.from || ""}
+                            messageId={`${msg.id}-quote-${i}`}
+                            accountEmail={accountEmail}
+                            theme="light"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                )} */}
+
+                {/* <div className="flex items-center gap-2 mt-3">
                   <button className="flex items-center gap-1 px-2 py-1.5 border border-gray-200 rounded-md text-gray-700 text-sm hover:bg-gray-100">
                     <Reply className="w-4 h-4" /> Reply
                   </button>
@@ -117,8 +181,9 @@ export default function ThreadViewer({
                   <button className="flex items-center gap-1 px-2 py-1.5 border border-gray-200 rounded-md text-gray-700 text-sm hover:bg-gray-100">
                     <Forward className="w-4 h-4" /> Forward
                   </button>
-                </div>
+                </div> */}
               </div>
+
               {!isLast && <div className="h-3" />}
             </div>
           </div>
