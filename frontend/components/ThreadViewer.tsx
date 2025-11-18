@@ -84,26 +84,44 @@ export default function ThreadViewer({
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <h2 className="text-[18px] font-semibold text-gray-900 truncate">
-          {sorted[sorted.length - 1].subject || "(No Subject)"}{" "}
-          <span className="text-gray-400 text-sm">[{sorted.length}]</span>
-        </h2>
+      <div className="relative">
+  {/* Subject Header */}
+  <div className="px-6 py-4 border-b border-gray-200 bg-white">
+    <h2 className="text-xl font-semibold text-gray-900 line-clamp-2 pr-32">
+      {sorted[sorted.length - 1].subject || "(No Subject)"}
+      <span className="text-gray-400 text-sm font-normal ml-2">
+        [{sorted.length}]
+      </span>
+    </h2>
+  </div>
 
-        <div className="flex items-center gap-2">
-          <button onClick={onPrev} title="Previous conversation" className="p-2 border rounded-md hover:bg-gray-50">
-            <ChevronLeft className="w-4 h-4 text-gray-600" />
-          </button>
-          <button onClick={onNext} title="Next conversation" className="p-2 border rounded-md hover:bg-gray-50">
-            <ChevronRight className="w-4 h-4 text-gray-600" />
-          </button>
-          <button onClick={onClose} title="Close" className="p-2 border rounded-md hover:bg-gray-50">
-            <X className="w-4 h-4 text-gray-600" />
-          </button>
-        </div>
-      </div>
+  {/* Floating Action Buttons - Top Right */}
+  <div className="absolute top-4 right-6 flex items-center gap-2 bg-white rounded-lg shadow-sm border border-gray-200 p-1">
+    <button 
+      onClick={onPrev}
+      title="Previous"
+      className="p-3 hover:bg-gray-100 rounded-md transition-colors"
+    >
+      <ChevronLeft className="w-4.5 h-4.5 text-gray-600" />
+    </button>
+    <button 
+      onClick={onNext}
+      title="Next"
+      className="p-1.5 hover:bg-gray-100 rounded-md transition-colors"
+    >
+      <ChevronRight className="w-4.5 h-4.5 text-gray-600" />
+    </button>
+    <div className="w-px h-5 bg-gray-200" />
+    <button 
+      onClick={onClose}
+      title="Close"
+      className="p-1.5 hover:bg-gray-100 rounded-md transition-colors"
+    >
+      <X className="w-4.5 h-4.5 text-gray-600" />
+    </button>
+  </div>
+</div>
 
-      <div className="border-b border-gray-200" />
 
       {/* messages */}
       {sorted.map((msg: any, idx: number) => {
@@ -173,13 +191,13 @@ export default function ThreadViewer({
 
                 {/* <div className="flex items-center gap-2 mt-3">
                   <button className="flex items-center gap-1 px-2 py-1.5 border border-gray-200 rounded-md text-gray-700 text-sm hover:bg-gray-100">
-                    <Reply className="w-4 h-4" /> Reply
+                    <Reply className="w-3.5 h-3.5" /> Reply
                   </button>
                   <button className="flex items-center gap-1 px-2 py-1.5 border border-gray-200 rounded-md text-gray-700 text-sm hover:bg-gray-100">
-                    <ReplyAll className="w-4 h-4" /> Reply All
+                    <ReplyAll className="w-3.5 h-3.5" /> Reply All
                   </button>
                   <button className="flex items-center gap-1 px-2 py-1.5 border border-gray-200 rounded-md text-gray-700 text-sm hover:bg-gray-100">
-                    <Forward className="w-4 h-4" /> Forward
+                    <Forward className="w-3.5 h-3.5" /> Forward
                   </button>
                 </div> */}
               </div>
