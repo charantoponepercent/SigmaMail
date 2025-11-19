@@ -5,6 +5,10 @@ import User from "../models/User.js";
 import EmailAccount from "../models/EmailAccount.js";
 import { getAuthorizedClientForAccount } from "../utils/googleClient.js";
 import { requireAuth } from "../middleware/requireAuth.js";
+import { runGmailSyncForUser } from "../workers/gmailSyncWorker.js";
+import { parsePayloadDeep, fixBase64, fetchAttachmentData } from "../utils/emailParser.js";
+import Email from "../models/Email.js";
+import Thread from "../models/Thread.js";
 
 const router = express.Router();
 
@@ -201,17 +205,24 @@ router.get("/gmail/messages", async (req, res) => {
 
 
 // DELETE /api/accounts/:email → disconnect Gmail
+// DELETE /api/accounts/:email → disconnect Gmail
 router.delete("/accounts/:email", async (req, res) => {
   try {
     const { email } = req.params;
     const userId = req.user.id;
 
     const account = await EmailAccount.findOneAndDelete({ userId, email });
+
     if (!account) {
       return res.status(404).json({ error: "Account not found" });
     }
 
-    console.log(`🗑️ Disconnected Gmail: ${email} for user ${userId}`);
+    // *** CLEANUP EMAILS & THREADS FOR THIS ACCOUNT ***
+    await Email.deleteMany({ accountId: account._id });
+    await Thread.deleteMany({ accountId: account._id });
+
+    console.log(`🗑️ Disconnected Gmail & cleaned emails: ${email}`);
+
     res.json({ message: "Account disconnected successfully", email });
   } catch (err) {
     console.error("Error disconnecting account:", err.message);
@@ -221,75 +232,6 @@ router.delete("/accounts/:email", async (req, res) => {
 
 
 
-// helper: convert Gmail URL-safe base64 into standard base64
-function fixBase64(str = "") {
-  let fixed = str.replace(/-/g, "+").replace(/_/g, "/").replace(/\s/g, "");
-  while (fixed.length % 4 !== 0) fixed += "=";
-  return fixed;
-}
-
-// deep recursive body extractor: returns { htmlBody, textBody, inlineParts, attachmentParts }
-// inlineParts: [{ cid, mimeType, data }] (data may be present on part.body.data)
-// attachmentParts: [{ attachmentId, mimeType, filename }]
-function parsePayloadDeep(payload) {
-  let htmlBody = "";
-  let textBody = "";
-  const inlineParts = []; // inline images with body.data or attachmentId + cid
-  const attachmentParts = []; // attachments with attachmentId
-
-  function walk(part) {
-    if (!part) return;
-
-    // HTML (priority)
-    if (part.mimeType === "text/html" && part.body?.data) {
-      htmlBody = Buffer.from(fixBase64(part.body.data), "base64").toString("utf8");
-    }
-
-    // plain as fallback
-    if (!htmlBody && part.mimeType === "text/plain" && part.body?.data) {
-      textBody = Buffer.from(fixBase64(part.body.data), "base64").toString("utf8");
-    }
-
-    // inline image part: has Content-ID OR body.data on image part
-    const cidHeader = part.headers?.find((h) => h.name === "Content-ID");
-    if (cidHeader && part.mimeType?.startsWith("image/")) {
-      inlineParts.push({
-        cid: cidHeader.value.replace(/[<>]/g, ""),
-        mimeType: part.mimeType,
-        data: part.body?.data ?? null,
-        attachmentId: part.body?.attachmentId ?? null,
-        filename: part.filename || null,
-      });
-    }
-
-    // image attachment (real attachmentId)
-    if (part.body?.attachmentId && part.mimeType?.startsWith("image/")) {
-      attachmentParts.push({
-        attachmentId: part.body.attachmentId,
-        mimeType: part.mimeType,
-        filename: part.filename || null,
-        cid: cidHeader?.value ? cidHeader.value.replace(/[<>]/g, "") : null,
-      });
-    }
-
-    if (part.parts) {
-      for (const p of part.parts) walk(p);
-    }
-  }
-
-  walk(payload);
-  return { htmlBody, textBody, inlineParts, attachmentParts };
-}
-
-// helper: fetch an attachment (base64 string) given messageId + attachmentId
-async function fetchAttachmentData(gmailClient, messageId, attachmentId) {
-  const att = await gmailClient.users.messages.attachments.get({
-    userId: "me",
-    messageId,
-    id: attachmentId,
-  });
-  return att.data?.data ? fixBase64(att.data.data) : null; // return standard base64 string
-}
 
 /**
  * Route: GET /api/gmail/messages/:id
@@ -304,6 +246,18 @@ async function fetchAttachmentData(gmailClient, messageId, attachmentId) {
  *  - parse deep body + inline images + attachments
  *  - embed inline images (cid) and append attachments at bottom as <img>
  */
+
+// DEBUG ONLY — run sync manually
+router.get("/debug/run-sync", async (req, res) => {
+  try {
+    await runGmailSyncForUser(req.user.id);
+    res.json({ message: "Sync completed successfully" });
+  } catch (err) {
+    console.error("Sync error:", err);
+    res.status(500).json({ error: "Sync failed" });
+  }
+});
+
 router.get("/gmail/messages/:id", async (req, res) => {
   try {
     const { id } = req.params;
@@ -479,6 +433,135 @@ router.get("/gmail/thread/:id", async (req, res) => {
 });
 
 
+
+
+// ----------------------------
+// DB-backed endpoints (Emails + Threads + time-window inboxes)
+// ----------------------------
+
+
+// GET /api/db/emails/:id  -> single email from DB
+router.get('/db/emails/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    const email = await Email.findOne({ _id: id, userId }).lean();
+    if (!email) return res.status(404).json({ error: 'Email not found' });
+
+    res.json(email);
+  } catch (err) {
+    console.error('DB email fetch error:', err);
+    res.status(500).json({ error: 'Failed to fetch email from DB' });
+  }
+});
+
+// GET /api/db/thread/:id -> thread by threadId or by DB _id (fallback)
+router.get('/db/thread/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    // Try find thread by threadId first
+    let thread = await Thread.findOne({ threadId: id, userId }).lean();
+
+    // If not found, maybe caller passed a message DB id — find the email and use its threadId
+    if (!thread) {
+      const maybeEmail = await Email.findOne({ _id: id, userId }).lean();
+      if (maybeEmail && maybeEmail.threadId) {
+        thread = await Thread.findOne({ threadId: maybeEmail.threadId, userId }).lean();
+      }
+    }
+
+    // If still no thread, try to build a thread from emails that share the same threadId
+    if (!thread) {
+      // try to find emails that match the id as a threadId
+      const messages = await Email.find({ threadId: id, userId }).sort({ date: 1 }).lean();
+      if (messages.length > 0) {
+        return res.json({ threadId: id, messages });
+      }
+      return res.status(404).json({ error: 'Thread not found' });
+    }
+
+    // If we found a thread doc, populate messages
+    const messages = await Email.find({ threadId: thread.threadId, userId }).sort({ date: 1 }).lean();
+
+    res.json({ threadId: thread.threadId, messages });
+  } catch (err) {
+    console.error('DB thread fetch error:', err);
+    res.status(500).json({ error: 'Failed to fetch thread from DB' });
+  }
+});
+
+router.get('/inbox/today', async (req, res) => {
+  try {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+
+    const end = new Date();
+    end.setHours(23, 59, 59, 999);
+
+    const emails = await Email.find({
+      userId: req.user.id,
+      labelIds: { $in: ['INBOX'] },
+      date: { $gte: start, $lte: end },
+    }).sort({ date: -1 });
+
+    res.json({ emails });
+  } catch (err) {
+    console.error('Error loading today emails:', err);
+    res.status(500).json({ error: 'Failed to load today\'s emails' });
+  }
+});
+
+// GET /api/inbox/yesterday -> unified inbox for yesterday
+router.get('/inbox/yesterday', async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const start = new Date();
+    start.setDate(start.getDate() - 1);
+    start.setHours(0,0,0,0);
+
+    const end = new Date();
+    end.setDate(end.getDate() - 1);
+    end.setHours(23,59,59,999);
+
+    const emails = await Email.find({
+      userId,
+      labelIds: { $in: ['INBOX'] },
+      date: { $gte: start, $lte: end },
+    }).sort({ date: -1 }).lean();
+
+    res.json({ emails });
+  } catch (err) {
+    console.error('Error loading yesterday inbox:', err);
+    res.status(500).json({ error: "Failed to load yesterday's inbox" });
+  }
+});
+
+// GET /api/inbox/week -> unified inbox for last 7 days (including today)
+router.get('/inbox/week', async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const end = new Date();
+    end.setHours(23,59,59,999);
+
+    const start = new Date();
+    start.setDate(start.getDate() - 6); // last 7 days including today
+    start.setHours(0,0,0,0);
+
+    const emails = await Email.find({
+      userId,
+      labelIds: { $in: ['INBOX'] },
+      date: { $gte: start, $lte: end },
+    }).sort({ date: -1 }).lean();
+
+    res.json({ emails });
+  } catch (err) {
+    console.error('Error loading week inbox:', err);
+    res.status(500).json({ error: 'Failed to load week inbox' });
+  }
+});
 
 export default router;
 

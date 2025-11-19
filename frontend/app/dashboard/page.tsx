@@ -19,6 +19,7 @@ import {
   Plus,
   Settings,
   LogOut,
+  Loader2,
 } from "lucide-react";
 
 import {
@@ -32,7 +33,18 @@ import { EllipsisVertical } from "lucide-react";
 type DashboardUser = { id: string; name: string };
 type DashboardAccount = { _id: string; email: string };
 type DashboardMessage = {
+  priority: any;
+  billDue: any;
+  snippet: any;
+  preview: any;
+  category: string;
+  accountEmail: any;
+  to: any;
+  attachments: boolean;
+  starred: any;
   id: string;
+  _id?: string;
+  messageId?: string;
   threadId?: string;
   subject: string;
   from: string;
@@ -64,6 +76,9 @@ export default function Dashboard() {
     null
   );
 
+  // FILTER BAR STATE
+  const [activeFilter, setActiveFilter] = useState("TODAY");
+
   const loadAccounts = useCallback(
     async (token: string) => {
       try {
@@ -82,12 +97,119 @@ export default function Dashboard() {
     [selectedAccount]
   );
 
+  // Filtered messages by active filter
   useEffect(() => {
-    if (selectedAccount) {
-      loadMessages(selectedAccount, currentFolder);
-      // loadLabelCounts(selectedAccount);
-    }
-  }, [selectedAccount, currentFolder]);
+    if (!selectedAccount) return;
+    setLoadingMessages(true);
+    if (activeFilter === "TODAY") loadToday();
+    else if (activeFilter === "YESTERDAY") loadYesterday();
+    else if (activeFilter === "WEEK") loadWeek();
+  }, [selectedAccount, currentFolder, activeFilter]);
+  // FILTER LOADERS
+  async function loadToday() {
+    const token = localStorage.getItem("token");
+    const res = await fetch(`${API_BASE}/api/inbox/today`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await res.json();
+    const emails = Array.isArray(data.emails)
+      ? (data.emails as DashboardMessage[])
+      : [];
+    setLoadingMessages(false);
+    const grouped = Object.values(
+      emails.reduce<Record<string, DashboardMessage>>((acc, msg) => {
+        const key = msg.threadId || msg._id || msg.id;
+        if (!key) return acc;
+
+        if (!acc[key]) {
+          acc[key] = {
+            ...msg,
+            id: msg._id || msg.messageId || msg.id || key,
+            count: 1,
+          };
+        } else {
+          acc[key] = {
+            ...acc[key],
+            count: (acc[key].count || 0) + 1,
+          };
+        }
+
+        return acc;
+      }, {})
+    ) as DashboardMessage[];
+    setMessages(grouped);
+    setNextPageToken(null);
+  }
+
+  async function loadYesterday() {
+    const token = localStorage.getItem("token");
+    const res = await fetch(`${API_BASE}/api/inbox/yesterday`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await res.json();
+    const emails = Array.isArray(data.emails)
+      ? (data.emails as DashboardMessage[])
+      : [];
+    setLoadingMessages(false);
+    const grouped = Object.values(
+      emails.reduce<Record<string, DashboardMessage>>((acc, msg) => {
+        const key = msg.threadId || msg._id || msg.id;
+        if (!key) return acc;
+
+        if (!acc[key]) {
+          acc[key] = {
+            ...msg,
+            id: msg._id || msg.messageId || msg.id || key,
+            count: 1,
+          };
+        } else {
+          acc[key] = {
+            ...acc[key],
+            count: (acc[key].count || 0) + 1,
+          };
+        }
+
+        return acc;
+      }, {})
+    ) as DashboardMessage[];
+    setMessages(grouped);
+    setNextPageToken(null);
+  }
+
+  async function loadWeek() {
+    const token = localStorage.getItem("token");
+    const res = await fetch(`${API_BASE}/api/inbox/week`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await res.json();
+    const emails = Array.isArray(data.emails)
+      ? (data.emails as DashboardMessage[])
+      : [];
+    setLoadingMessages(false);
+    const grouped = Object.values(
+      emails.reduce<Record<string, DashboardMessage>>((acc, msg) => {
+        const key = msg.threadId || msg._id || msg.id;
+        if (!key) return acc;
+
+        if (!acc[key]) {
+          acc[key] = {
+            ...msg,
+            id: msg._id || msg.messageId || msg.id || key,
+            count: 1,
+          };
+        } else {
+          acc[key] = {
+            ...acc[key],
+            count: (acc[key].count || 0) + 1,
+          };
+        }
+
+        return acc;
+      }, {})
+    ) as DashboardMessage[];
+    setMessages(grouped);
+    setNextPageToken(null);
+  }
 
   useEffect(() => {
     setMounted(true);
@@ -115,7 +237,7 @@ export default function Dashboard() {
   //   setLabelCounts(data);
   // }
 
-  // ✅ Load & group messages by thread
+  // ✅ Load & group messages by thread (Gmail per-account)
   async function loadMessages(account: string, label = currentFolder, pageToken?: string) {
     setLoadingMessages(true);
   
@@ -177,56 +299,25 @@ export default function Dashboard() {
 
 
     async function openMessage(id: string) {
-      console.log("openMessage CALLED with id:", id);
-      const token = localStorage.getItem("token");
-      if (!selectedAccount) return;
-
+      // Always load from DB now for all accounts
       setLoadingThread(true);
-
       try {
-        // Step 1: fetch single message (ensures we get threadId and a single-message fallback)
-        const msgRes = await fetch(
-          `${API_BASE}/api/gmail/messages/${id}?account=${encodeURIComponent(selectedAccount)}`,
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
-        if (!msgRes.ok) throw new Error("Failed to fetch message");
-        const msgData = await msgRes.json();
+        const token = localStorage.getItem("token");
 
-        // If the message didn't have a threadId for some reason, show just that message
-        if (!msgData.threadId) {
-          setSelectedMessage({ messages: [msgData], threadId: msgData.id });
-          setSelectedThreadId(msgData.id);
-          return;
-        }
+        // Always load from DB now
+        const res = await fetch(`${API_BASE}/api/db/thread/${id}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
 
-        // Step 2: fetch full thread using thread id (thread route is resilient)
-        const threadRes = await fetch(
-          `${API_BASE}/api/gmail/thread/${msgData.threadId}?account=${encodeURIComponent(selectedAccount)}`,
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
-        if (!threadRes.ok) {
-          // try fallback: call thread route with original message id (route auto-resolves)
-          const fallback = await fetch(
-            `${API_BASE}/api/gmail/thread/${id}?account=${encodeURIComponent(selectedAccount)}`,
-            { headers: { Authorization: `Bearer ${token}` } }
-          );
-          if (!fallback.ok) throw new Error("Failed to fetch thread");
-          const fallbackData = await fallback.json();
-          setSelectedMessage(fallbackData);
-          setSelectedThreadId(fallbackData.threadId || id);
-          return;
-        }
+        if (!res.ok) throw new Error("DB thread fetch failed");
+        const data = await res.json();
 
-        const threadData = await threadRes.json();
+        setSelectedMessage(data);
+        setSelectedThreadId(data.threadId || id);
 
-        setSelectedMessage(threadData);
-        setSelectedThreadId(threadData.threadId || msgData.threadId);
       } catch (err) {
-        console.error("Error loading thread:", err);
-        // optionally: show toast to user
-      }
-
-      finally {
+        console.error("DB thread load error:", err);
+      } finally {
         setLoadingThread(false);
       }
     }
@@ -306,9 +397,20 @@ export default function Dashboard() {
     const idx = getSelectedIndex(visible);
     if (idx > 0) {
       const target = visible[idx - 1];
-      const key = target.threadId || target.id;
-      openMessage(target.id);
-      scrollThreadIntoView(key);
+      const scrollKey =
+        target.threadId || target.id || target._id || target.messageId;
+      const targetId =
+        selectedAccount === "ALL"
+          ? target._id ?? target.messageId ?? target.id
+          : target.id ?? target.messageId ?? target._id;
+
+      if (!targetId) {
+        console.warn("No identifier found for previous thread", target);
+        return;
+      }
+
+      openMessage(targetId);
+      if (scrollKey) scrollThreadIntoView(scrollKey);
     }
   }
   function goNextThread() {
@@ -318,10 +420,61 @@ export default function Dashboard() {
     const idx = getSelectedIndex(visible);
     if (idx >= 0 && idx < visible.length - 1) {
       const target = visible[idx + 1];
-      const key = target.threadId || target.id;
-      openMessage(target.id);
-      scrollThreadIntoView(key);
+      const scrollKey =
+        target.threadId || target.id || target._id || target.messageId;
+      const targetId =
+        selectedAccount === "ALL"
+          ? target._id ?? target.messageId ?? target.id
+          : target.id ?? target.messageId ?? target._id;
+
+      if (!targetId) {
+        console.warn("No identifier found for next thread", target);
+        return;
+      }
+
+      openMessage(targetId);
+      if (scrollKey) scrollThreadIntoView(scrollKey);
     }
+  }
+
+  async function loadAllInboxToday() {
+    setLoadingMessages(true);
+    const token = localStorage.getItem("token");
+  
+    try {
+      const res = await fetch(`${API_BASE}/api/inbox/today`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+  
+      const data = await res.json();
+      const emails = (Array.isArray(data.emails) ? data.emails : []) as (
+        DashboardMessage & { _id?: string }
+      )[];
+  
+      // Group by threadId like Gmail list
+      const grouped: DashboardMessage[] = Object.values(
+        emails.reduce<Record<string, DashboardMessage>>((acc, msg) => {
+          const key = msg.threadId || msg._id || msg.id;
+          if (!acc[key]) {
+            acc[key] = {
+              ...msg,
+              id: (msg._id || msg.messageId || msg.id), // important for ThreadViewer
+              count: 1,
+            };
+          } else {
+            acc[key].count = (acc[key].count || 1) + 1;
+          }
+          return acc;
+        }, {})
+      );
+  
+      setMessages(grouped);
+      setNextPageToken(null); // Disable pagination for ALL inbox
+    } catch (err) {
+      console.error("Unified inbox load error:", err);
+    }
+  
+    setLoadingMessages(false);
   }
 
   function logout() {
@@ -356,13 +509,36 @@ export default function Dashboard() {
           <Plus className="w-4 h-4" />
         </button>
       </div>
+      {/* Search */}
+      <div className="px-4 py-2 border-b border-gray-100 sticky top-[48px] bg-white z-10">
+        <div className="flex items-center bg-gray-50 border border-gray-200 rounded-md px-3 py-2 shadow-sm">
+          <Search className="w-4 h-4 text-gray-400 mr-2" />
+          <input
+            type="text"
+            placeholder="Search mail"
+            className="w-full text-sm bg-transparent outline-none placeholder-gray-400"
+            onChange={(e) => {
+              const q = e.target.value.toLowerCase();
+              setMessages((prev) =>
+                prev.map((msg) => ({
+                  ...msg,
+                  hidden: q
+                    ? !msg.subject?.toLowerCase().includes(q) &&
+                      !msg.from?.toLowerCase().includes(q)
+                    : false,
+                }))
+              );
+            }}
+          />
+        </div>
+      </div>
 
       {/* All Inbox Tab */}
       <div
         onClick={() => {
           setSelectedAccount("ALL");
-          // Logic to load all messages can be added here
-          // For now, we might just clear the specific account filter or handle "ALL" in loadMessages
+          setActiveFilter("TODAY");
+          loadToday();
         }}
         className={`flex items-center gap-3 px-3 py-2.5 cursor-pointer rounded-lg transition-all border
           ${
@@ -470,47 +646,50 @@ export default function Dashboard() {
   <div className="flex-1 m-1 flex overflow-hidden">
     {/* MIDDLE PANEL - Email List */}
     <section 
-      className={`border-r-2 border-l-2  mr-3 mt-3 mb-3 border-gray-200 bg-white flex flex-col transition-all duration-300 ease-in-out ${
-        selectedMessage 
-          ? "w-3/8" // 50% when thread is open
-          : "flex-1"  // Full width when no thread
-      }`}
-    >
-      <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4 sticky top-0 bg-white z-10">
-        <h2 className="font-semibold text-gray-500 text-sm tracking-tight">
-          {selectedAccount || "Select Account"}
-        </h2>
-        {loadingMessages && (
-          <span className="text-[16px] text-gray-400">Loading...</span>
-        )}
-      </div>
+  className={`border-r border-l mr-3 mt-3 mb-3 border-gray-200 bg-gray-50 flex flex-col transition-all duration-300 ease-in-out overflow-x-hidden ${
+    selectedMessage 
+      ? "w-3/8" 
+      : "flex-1"
+  }`}
+>
 
-      {/* Search */}
-      <div className="px-4 py-2 border-b border-gray-100 sticky top-[48px] bg-white z-10">
-        <div className="flex items-center bg-gray-50 border border-gray-200 rounded-md px-3 py-2 shadow-sm">
-          <Search className="w-4 h-4 text-gray-400 mr-2" />
-          <input
-            type="text"
-            placeholder="Search mail"
-            className="w-full text-sm bg-transparent outline-none placeholder-gray-400"
-            onChange={(e) => {
-              const q = e.target.value.toLowerCase();
-              setMessages((prev) =>
-                prev.map((msg) => ({
-                  ...msg,
-                  hidden: q
-                    ? !msg.subject?.toLowerCase().includes(q) &&
-                      !msg.from?.toLowerCase().includes(q)
-                    : false,
-                }))
-              );
-            }}
-          />
-        </div>
-      </div>
+  {/* Header */}
+  <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4 sticky top-0 bg-white z-10">
+    <h2 className="font-semibold text-gray-500 text-sm tracking-tight">
+      {selectedAccount || "Select Account"}
+    </h2>
+    {loadingMessages && (
+      <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
+    )}
+  </div>
 
-      {/* Email List */}
-      <div className="flex-1 p-3 overflow-y-auto space-y-1 bg-white">
+  {/* Filter Bar */}
+  <div className="flex items-center gap-3 px-5 py-3 border-b border-gray-200 bg-white sticky top-[56px] z-10">
+    <span className = "mr-2">Filter :</span>
+    {["TODAY", "YESTERDAY", "WEEK"].map((f) => (
+      <button
+        key={f}
+        onClick={() => setActiveFilter(f)}
+        className={`px-3 py-1.5 text-xs font-medium rounded-md transition ${
+          activeFilter === f
+            ? "bg-purple-100 text-purple-700"
+            : "bg-white text-gray-600 hover:bg-gray-100"
+        }`}
+      >
+        {f}
+      </button>
+    ))}
+  </div>
+
+  {/* Email List */}
+  <div className="flex-1 p-4 overflow-y-auto space-y-2">
+    {loadingMessages && (
+      <div className="p-4 flex items-center justify-center">
+        <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+      </div>
+    )}
+    {!loadingMessages && (
+      <>
         {!selectedAccount ? (
           <p className="p-4 text-gray-500 text-sm">Select an account</p>
         ) : messages.length === 0 ? (
@@ -521,10 +700,26 @@ export default function Dashboard() {
             .map((msg, idx) => (
               <div
                 key={msg.threadId || msg.id || idx}
-                onClick={() => openMessage(msg.id)}
-                data-thread-id={msg.threadId || msg.id}
-                className={`group flex items-start gap-3 px-4 py-3 cursor-pointer transition-all rounded-xl drop-shadow-[0_0_1px_rgba(0,0,0,0.05)] bg-white border border-gray-200 
-  hover:shadow-md hover:bg-gray-50 ${
+                onClick={() => {
+                  const messageId =
+                    selectedAccount === "ALL"
+                      ? msg._id ?? msg.messageId ?? msg.id
+                      : msg.id ?? msg.messageId ?? msg._id;
+
+                  if (!messageId) {
+                    console.warn("No identifier found for message", msg);
+                    return;
+                  }
+
+                  openMessage(messageId);
+                }}
+                data-thread-id={
+                  msg.threadId ||
+                  (selectedAccount === "ALL"
+                    ? (msg._id || msg.messageId || msg.id)
+                    : (msg.id || msg.messageId || msg._id))
+                }
+                className={`group flex items-start gap-3 px-4 py-3 cursor-pointer transition-all rounded-lg bg-white border-l-4 ${
                   selectedThreadId === (msg.threadId || msg.id) ||
                   (selectedMessage?.messages?.some(
                     (m) =>
@@ -533,31 +728,104 @@ export default function Dashboard() {
                       (selectedMessage?.threadId &&
                         selectedMessage.threadId === msg.threadId)
                   ) ?? false)
-                    ? "bg-blue-50 rounded-2xl"
-                    : "hover:bg-gray-50"
+                    ? "border-l-purple-500 bg-purple-50 shadow-sm"
+                    : "border-l-transparent hover:border-l-gray-300 hover:shadow-sm"
                 }`}
               >
-                <div className="w-8 h-8 flex-shrink-0 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[12px] font-semibold uppercase">
+                {/* Avatar */}
+                <div className="w-10 h-10 flex-shrink-0 rounded-full bg-gradient-to-br from-purple-400 to-pink-400 text-white flex items-center justify-center text-sm font-semibold uppercase shadow-sm">
                   {getAvatarInitial(msg.from)}
                 </div>
 
-                <div className="flex-1 p-1 min-w-0">
-                  <div className="flex items-center justify-between mb-0.5">
-                    <h3 className="text-[13.5px] font-semibold text-gray-900 truncate group-hover:text-blue-600">
-                      {msg.from?.split("<")[0].trim() || "Unknown Sender"}
-                      {(msg.count ?? 1) > 1 && (
-                        <span className="ml-1 text-[12px] text-gray-500">
-                          [{msg.count ?? 1}]
+                {/* Content */}
+                <div className="flex-1 truncate min-w-0">
+                  {/* Top Row: Sender, Badge, Date */}
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <h3 className="text-sm font-semibold text-gray-900 truncate">
+                        {msg.from?.split("<")[0].trim() || "Unknown Sender"}
+                      </h3>
+                      {/* Priority or Bill Due badge */}
+                      {msg.priority && (
+                        <span className="px-2 py-0.5 text-[10px] font-medium text-purple-700 bg-purple-100 rounded-full flex-shrink-0">
+                          Priority
                         </span>
                       )}
-                    </h3>
-                    <span className="text-[11.5px] text-gray-500 whitespace-nowrap ml-2">
+                      {msg.billDue && (
+                        <span className="px-2 py-0.5 text-[10px] font-medium text-orange-700 bg-orange-100 rounded-full flex-shrink-0">
+                          Bill Due
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-xs text-gray-500 whitespace-nowrap flex-shrink-0">
                       {formatDate(msg.date)}
                     </span>
                   </div>
-                  <p className="text-[13px] text-gray-800 truncate font-medium">
+
+                  {/* Subject */}
+                  <p className="text-sm font-medium text-gray-900 truncate mb-1">
                     {msg.subject || "(No Subject)"}
                   </p>
+
+                  {/* Bottom Row: Category tag + Account email + Attachments */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {/* Category badge (Work, Bills, Personal, etc.) */}
+                    <span className={`px-2 py-0.5 text-[10px] font-medium rounded ${
+                      msg.category === 'Work' ? 'bg-blue-100 text-blue-700' :
+                      msg.category === 'Bills' ? 'bg-orange-100 text-orange-700' :
+                      msg.category === 'Personal' ? 'bg-purple-100 text-purple-700' :
+                      msg.category === 'Finance' ? 'bg-green-100 text-green-700' :
+                      msg.category === 'Travel' ? 'bg-cyan-100 text-cyan-700' :
+                      'bg-gray-100 text-gray-700'
+                    }`}>
+                      {msg.category || 'General'}
+                    </span>
+
+                    {/* Account email with dot separator */}
+                    <div className="flex items-center gap-1.5 text-xs rounded-xl bg-gray-50 border px-3 py-1 text-gray-500">
+                      <span className="w-1 h-1 rounded-full bg-purple-500"></span>
+                      <span className="max-w-[200px]">
+                        {(msg.accountEmail || msg.to || "Unknown")
+                          .replace(/\"/g, "")
+                          .split("<")[0]
+                          .trim()}
+                      </span>
+                    </div>
+
+                    {/* Attachment indicator */}
+                    {msg.attachments && (
+                      <div className="flex items-center gap-1 text-xs text-gray-500">
+                        <span className="w-1 h-1 rounded-full bg-gray-400"></span>
+                        <svg
+                          className="w-3.5 h-3.5"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
+                          />
+                        </svg>
+                        <span>
+                          {typeof msg.attachments === "number"
+                            ? `${msg.attachments} attachment${
+                                msg.attachments > 1 ? "s" : ""
+                              }`
+                            : "Attachment"}
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Star icon (if starred) */}
+                    {msg.starred && (
+                      <svg className="w-4 h-4 text-yellow-500 fill-current ml-auto" viewBox="0 0 20 20">
+                        <path d="M10 15l-5.878 3.09 1.123-6.545L.489 6.91l6.572-.955L10 0l2.939 5.955 6.572.955-4.756 4.635 1.123 6.545z" />
+                      </svg>
+                    )}
+                  </div>
                 </div>
               </div>
             ))
@@ -571,13 +839,15 @@ export default function Dashboard() {
                 if (prevThread) setSelectedThreadId(prevThread);
               });
             }}
-            className="w-full py-2 mt-3 text-blue-600 hover:bg-blue-50 rounded"
+            className="w-full py-2 mt-3 text-sm text-purple-600 hover:bg-purple-50 rounded-lg border border-purple-200 transition"
           >
             Load more
           </button>
         )}
-      </div>
-    </section>
+      </>
+    )}
+  </div>
+</section>
 
     {/* RIGHT PANEL - Thread Viewer (Slides in/out) */}
     <section 

@@ -126,10 +126,19 @@ export default function ThreadViewer({
       {/* messages */}
       {sorted.map((msg: any, idx: number) => {
         const isLast = idx === sorted.length - 1;
-        const { clean, quotes } = extractQuotedSections(msg.body || "");
+        const rawBody =
+        msg.body ||
+        msg.htmlBodyProcessed ||
+        msg.htmlBodyRaw ||
+        (msg.textBody ? `<pre>${msg.textBody}</pre>` : "");
+
+      const { clean, quotes } = extractQuotedSections(rawBody);
 
         return (
-          <div key={msg.id} className="flex items-start gap-3">
+          <div
+            key={`${msg.threadId || 't'}-${msg._id || msg.messageId || msg.id || idx}`}
+            className="flex items-start gap-3"
+          >
             {/* Avatar */}
             <div className="w-9 h-9 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-semibold text-sm uppercase mt-1">
               {msg.from?.[0] || "?"}
