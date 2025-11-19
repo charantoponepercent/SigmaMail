@@ -337,9 +337,11 @@ export default function Dashboard() {
   return (
     <div className="flex h-screen bg-slate-100 text-gray-800 text-[14px] leading-tight">
   {/* LEFT PANEL - Sidebar (Fixed Width) */}
-  <aside className="w-[260px] border rounded-3xl ml-3 mt-3 mb-3 border-gray-300 flex flex-col justify-between bg-gray-50 flex-shrink-0">
-    <div className="p-4">
-      <div className="flex items-center justify-between mb-6">
+  <aside className="w-[260px] border rounded-3xl ml-3 mt-3 mb-3 border-gray-300 flex flex-col bg-gray-50 flex-shrink-0 overflow-hidden">
+    {/* TOP SECTION: User Info & All Inbox */}
+    <div className="p-4 flex flex-col gap-6">
+      {/* User Header */}
+      <div className="flex items-center justify-between">
         <div>
           <h1 className="text-base font-semibold text-gray-800 tracking-tight">
             {user?.name || "User"}
@@ -355,33 +357,58 @@ export default function Dashboard() {
         </button>
       </div>
 
+      {/* All Inbox Tab */}
+      <div
+        onClick={() => {
+          setSelectedAccount("ALL");
+          // Logic to load all messages can be added here
+          // For now, we might just clear the specific account filter or handle "ALL" in loadMessages
+        }}
+        className={`flex items-center gap-3 px-3 py-2.5 cursor-pointer rounded-lg transition-all border
+          ${
+            selectedAccount === "ALL"
+              ? "bg-white border-gray-200 shadow-sm text-gray-900"
+              : "border-transparent hover:bg-gray-100 text-gray-600"
+          }
+        `}
+      >
+        <Inbox className={`w-4 h-4 ${selectedAccount === "ALL" ? "text-blue-600" : "text-gray-500"}`} />
+        <span className="text-[13.5px] font-medium">All Inbox</span>
+      </div>
+    </div>
+
+    {/* SPACER to push accounts to bottom */}
+    <div className="flex-1"></div>
+
+    {/* BOTTOM SECTION: Connected Accounts & Settings */}
+    <div className="p-4 pt-0">
       {/* Connected Accounts */}
-      <div className="mb-8">
-        <h2 className="text-[11px] font-semibold text-gray-500 uppercase mb-3 tracking-widest">
+      <div className="mb-4">
+        <h2 className="text-[11px] font-semibold text-gray-400 uppercase mb-2 tracking-widest px-1">
           Connected Accounts
         </h2>
 
-        <div className="space-y-1.5">
+        <div className="space-y-1 max-h-[200px] overflow-y-auto custom-scrollbar">
           {accounts.length === 0 ? (
-            <p className="text-xs text-gray-400 italic">
+            <p className="text-xs text-gray-400 italic px-1">
               No accounts connected
             </p>
           ) : (
             accounts.map((acc) => (
               <div
                 key={acc._id}
-                className={`group relative flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg cursor-pointer border transition-all duration-200 ${
+                className={`group relative flex items-center justify-between gap-2 px-2 py-2 rounded-lg cursor-pointer transition-all duration-200 ${
                   selectedAccount === acc.email
-                    ? "border-blue-300 bg-blue-50 text-blue-700 font-medium shadow-sm"
-                    : "border-transparent hover:bg-gray-50 hover:border-gray-200"
+                    ? "bg-white shadow-sm text-gray-900"
+                    : "hover:bg-gray-100 text-gray-600"
                 }`}
                 onClick={() => setSelectedAccount(acc.email)}
               >
-                <div className="flex items-center gap-2 truncate">
-                  <div className="w-6 h-6 rounded-full bg-gradient-to-br from-red-500 to-pink-500 flex items-center justify-center text-white text-[11px] font-bold uppercase shadow-sm">
+                <div className="flex items-center gap-2.5 truncate">
+                  <div className="w-5 h-5 rounded-full bg-gradient-to-br from-gray-100 to-gray-200 border border-gray-300 flex items-center justify-center text-gray-600 text-[10px] font-bold uppercase">
                     {acc.email[0]}
                   </div>
-                  <span className="truncate text-[13px] text-gray-800 font-medium group-hover:text-gray-900">
+                  <span className="truncate text-[13px] font-medium">
                     {acc.email}
                   </span>
                 </div>
@@ -391,10 +418,10 @@ export default function Dashboard() {
                   <DropdownMenuTrigger asChild>
                     <button
                       onClick={(e) => e.stopPropagation()}
-                      className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-gray-100 transition-all"
+                      className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-gray-200 transition-all"
                       title="More options"
                     >
-                      <EllipsisVertical className="w-4 h-4 text-gray-500" />
+                      <EllipsisVertical className="w-3.5 h-3.5 text-gray-500" />
                     </button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent
@@ -418,54 +445,24 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* MAILBOX FILTERS
-      <div className="space-y-1.5">
-        {[
-          { name: "Inbox", id: "INBOX", icon: Inbox },
-          { name: "Unread", id: "UNREAD", icon: Inbox },
-          { name: "Sent", id: "SENT", icon: Send },
-          { name: "Archive", id: "ARCHIVE", icon: Archive },
-          { name: "Trash", id: "TRASH", icon: Trash2 },
-        ].map((f) => (
-          <div
-            key={f.id}
-            onClick={() => {
-              setCurrentFolder(f.id);
-              if (selectedAccount) loadMessages(selectedAccount, f.id);
-            }}
-            className={`flex items-center justify-between px-3 py-2.5 cursor-pointer rounded-lg transition-all
-              ${
-                currentFolder === f.id
-                  ? "bg-blue-50 text-blue-700 font-medium shadow-sm"
-                  : "hover:bg-gray-100 text-gray-800"
-              }
-            `}
-          >
-            <div className="flex items-center gap-3">
-              <f.icon className="w-4 h-4" />
-              <span className="text-sm">{f.name}</span>
-            </div>
-          </div>
-        ))}
-      </div> */}
-    </div>
+      {/* Settings & Logout */}
+      <div className="border-t border-gray-200 pt-3 space-y-1">
+        <button
+          onClick={() => alert("Settings clicked")}
+          className="w-full flex items-center justify-between hover:bg-gray-100 px-2 py-2 rounded-md transition text-gray-600"
+        >
+          <span className="text-[13px] font-medium">Settings</span>
+          <Settings className="w-4 h-4 text-gray-400" />
+        </button>
 
-    <div className="border-t border-gray-200 bg-gray-100 px-4 py-3 space-y-2 text-sm">
-      <button
-        onClick={() => alert("Settings clicked")}
-        className="w-full flex items-center justify-between hover:bg-white p-2 rounded-md transition"
-      >
-        <span className="text-gray-700">Settings</span>
-        <Settings className="w-4 h-4 text-gray-500" />
-      </button>
-
-      <button
-        onClick={logout}
-        className="w-full flex items-center justify-between hover:bg-white p-2 rounded-md text-red-500 transition"
-      >
-        <span>Logout</span>
-        <LogOut className="w-4 h-4" />
-      </button>
+        <button
+          onClick={logout}
+          className="w-full flex items-center justify-between hover:bg-red-50 px-2 py-2 rounded-md text-red-600 transition"
+        >
+          <span className="text-[13px] font-medium">Logout</span>
+          <LogOut className="w-4 h-4" />
+        </button>
+      </div>
     </div>
   </aside>
 
