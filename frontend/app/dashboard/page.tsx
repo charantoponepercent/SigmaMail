@@ -488,9 +488,9 @@ export default function Dashboard() {
 
   // ✅ UI Layout
   return (
-    <div className="flex h-screen bg-slate-100 text-gray-800 text-[14px] leading-tight">
+    <div className="flex h-screen text-gray-800 text-[14px] leading-tight">
   {/* LEFT PANEL - Sidebar (Fixed Width) */}
-  <aside className="w-[260px] border rounded-3xl ml-3 mt-3 mb-3 border-gray-300 flex flex-col bg-gray-50 flex-shrink-0 overflow-hidden">
+  <aside className="w-[210px] ml-2 mt-2 mb-2 border-gray-300 flex flex-col bg-gray-50 flex-shrink-0 overflow-hidden">
     {/* TOP SECTION: User Info & All Inbox */}
     <div className="p-4 flex flex-col gap-6">
       {/* User Header */}
@@ -646,7 +646,7 @@ export default function Dashboard() {
   <div className="flex-1 m-1 flex overflow-hidden">
     {/* MIDDLE PANEL - Email List */}
     <section 
-  className={`border-r border-l mr-3 mt-3 mb-3 border-gray-200 bg-gray-50 flex flex-col transition-all duration-300 ease-in-out overflow-x-hidden ${
+  className={`border-r border-l mt-2 mb-3 border-gray-200 bg-gray-50 flex flex-col transition-all duration-300 ease-in-out overflow-x-hidden rounded-xl ${
     selectedMessage 
       ? "w-3/8" 
       : "flex-1"
@@ -682,7 +682,7 @@ export default function Dashboard() {
   </div>
 
   {/* Email List */}
-  <div className="flex-1 p-4 overflow-y-auto space-y-2">
+  <div className="flex-1 p-2 overflow-y-auto space-y-2">
     {loadingMessages && (
       <div className="p-4 flex items-center justify-center">
         <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
@@ -851,13 +851,13 @@ export default function Dashboard() {
 
     {/* RIGHT PANEL - Thread Viewer (Slides in/out) */}
     <section 
-      className={`bg-white mt-3 mb-3 rounded-3xl overflow-hidden transition-all duration-300 ease-in-out ${
+      className={`bg-white mt-2 mb-3 rounded-xl overflow-hidden transition-all duration-300 ease-in-out ${
         selectedMessage 
-          ? "w-3/5 opacity-100" // 50% width and visible when open
+          ? "w-2/3 opacity-100" // 50% width and visible when open
           : "w-0 opacity-0"      // Hidden when closed
       }`}
     >
-      <div className="h-full overflow-y-auto p-6">
+      <div className="h-full overflow-y-auto p-1">
         {loadingThread ? (
           <ThreadSkeleton />
         ) : selectedMessage ? (

@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
@@ -20,6 +19,9 @@ export default function SecureEmailViewer({
   accountEmail,
   theme = "light",
 }: SecureEmailViewerProps) {
+  // senderEmail is part of the interface but not currently used in rendering
+  // Keeping it for potential future use (e.g., sender verification)
+  void senderEmail;
   const hostRef = useRef<HTMLDivElement | null>(null);
   const shadowRootRef = useRef<ShadowRoot | null>(null);
   const [showImages, setShowImages] = useState(true);
@@ -75,18 +77,181 @@ export default function SecureEmailViewer({
 
     const processedHTML = showImages ? cleanHTML : cleanHTML.replace(/<img[^>]*>/gi, "");
 
+    // Post-process HTML to remove problematic inline styles that cause overflow
+    const processedHTMLFixed = processedHTML
+      // Remove fixed widths that exceed reasonable limits
+      .replace(/width\s*:\s*(\d+)(px|%)/gi, (match, value, unit) => {
+        const numValue = parseInt(value);
+        if (unit === 'px' && numValue > 800) {
+          return `max-width: 100%`;
+        }
+        return match;
+      })
+      // Ensure all width attributes on elements are constrained
+      .replace(/<(\w+)[^>]*\s+width\s*=\s*["'](\d+)(px|%)?["'][^>]*>/gi, (match, _tag, value) => {
+        const numValue = parseInt(value);
+        if (numValue > 800) {
+          return match.replace(/\s+width\s*=\s*["'][^"']*["']/, '');
+        }
+        return match;
+      });
+
     // Render into shadow DOM
     root.innerHTML = `
       <style>
-        :host { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif; }
-        a { color: #2563eb; text-decoration: none; }
-        a:hover { text-decoration: underline; }
-        img.lazy-loading { opacity: 0.45; transition: opacity 240ms ease-in-out; }
-        img.loaded { opacity: 1; }
-        /* basic reset for quoted sections that may be embedded; leave styling minimal */
-        blockquote { border-left: 3px solid #e5e7eb; margin-left: 0.5rem; padding-left: 0.75rem; color: #374151; }
+        :host {
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+          display: block;
+          width: 100% !important;
+          max-width: 100% !important;
+          overflow-x: hidden !important;
+        }
+
+        html, body {
+          max-width: 100% !important;
+          overflow-x: hidden !important;
+          margin: 0 !important;
+          padding: 0 !important;
+        }
+
+        * {
+          max-width: 100% !important;
+          box-sizing: border-box !important;
+        }
+
+        /* Email wrapper - no padding, let parent handle it */
+        #email-wrapper {
+          width: 100% !important;
+          max-width: 100% !important;
+          padding: 0 !important;
+          margin: 0 !important;
+          box-sizing: border-box !important;
+          overflow-x: hidden !important;
+          background: transparent !important;
+        }
+
+        /* Email root container */
+        #email-root {
+          width: 100% !important;
+          max-width: 100% !important;
+          padding: 0 !important;
+          margin: 0 !important;
+          overflow-x: hidden !important;
+          box-sizing: border-box !important;
+        }
+
+        /* Universal constraint for all elements */
+        #email-root *,
+        #email-wrapper * {
+          max-width: 100% !important;
+          box-sizing: border-box !important;
+          overflow-wrap: break-word !important;
+          word-wrap: break-word !important;
+        }
+
+        /* Images */
+        #email-root img,
+        img {
+          max-width: 100% !important;
+          width: auto !important;
+          height: auto !important;
+          display: block !important;
+        }
+
+        /* Tables - critical for email templates */
+        #email-root table,
+        table {
+          width: 100% !important;
+          max-width: 100% !important;
+          table-layout: auto !important;
+          border-collapse: collapse !important;
+          word-wrap: break-word !important;
+          overflow-wrap: break-word !important;
+        }
+
+        /* Table cells */
+        #email-root td,
+        #email-root th,
+        td, th {
+          max-width: 100% !important;
+          word-wrap: break-word !important;
+          overflow-wrap: break-word !important;
+          padding: 8px !important;
+        }
+
+        /* Divs and containers */
+        #email-root div,
+        div {
+          max-width: 100% !important;
+          overflow-x: hidden !important;
+          overflow-wrap: break-word !important;
+        }
+
+        /* Paragraphs and text */
+        #email-root p,
+        #email-root span,
+        p, span {
+          max-width: 100% !important;
+          overflow-wrap: break-word !important;
+          word-wrap: break-word !important;
+        }
+
+        /* Pre and code */
+        #email-root pre,
+        #email-root code,
+        pre, code {
+          white-space: pre-wrap !important;
+          word-break: break-word !important;
+          max-width: 100% !important;
+          overflow-x: hidden !important;
+        }
+
+        /* Buttons and form elements */
+        #email-root button,
+        #email-root input,
+        #email-root textarea,
+        #email-root select,
+        button, input, textarea, select {
+          max-width: 100% !important;
+          box-sizing: border-box !important;
+        }
+
+        /* Links */
+        a {
+          color: #2563eb !important;
+          text-decoration: none !important;
+          word-break: break-word !important;
+        }
+        a:hover {
+          text-decoration: underline !important;
+        }
+
+        /* Lazy loading images */
+        img.lazy-loading {
+          opacity: 0.45;
+          transition: opacity 240ms ease-in-out;
+        }
+        img.loaded {
+          opacity: 1;
+        }
+
+        /* Blockquotes */
+        blockquote {
+          border-left: 3px solid #e5e7eb;
+          margin-left: 0.5rem;
+          padding-left: 0.75rem;
+          color: #374151;
+          max-width: 100% !important;
+        }
+
+        /* Remove any fixed widths that might cause overflow */
+        [style*="width"] {
+          max-width: 100% !important;
+        }
       </style>
-      <div id="email-root">${processedHTML}</div>
+      <div id="email-wrapper">
+        <div id="email-root">${processedHTMLFixed}</div>
+      </div>
     `;
 
     // Determine whether there are images blocked
@@ -225,12 +390,13 @@ const observer = new IntersectionObserver(
 
       <div
         ref={hostRef}
-        className="w-full flex-1 overflow-y-auto text-sm text-gray-800 leading-relaxed"
+        className="w-full flex-1 text-sm text-gray-800 leading-relaxed"
         style={{
-          backgroundColor: theme === "dark" ? "#121212" : "white",
+          backgroundColor: theme === "dark" ? "#121212" : "transparent",
           color: theme === "dark" ? "#e5e7eb" : "#111827",
-          borderRadius: "8px",
-          padding: "1.5rem",
+          overflowX: "hidden",
+          overflowY: "visible",
+          maxWidth: "100%",
         }}
       />
     </div>
