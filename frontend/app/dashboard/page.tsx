@@ -104,6 +104,17 @@ export default function Dashboard() {
     if (activeFilter === "TODAY") loadToday();
     else if (activeFilter === "YESTERDAY") loadYesterday();
     else if (activeFilter === "WEEK") loadWeek();
+    else if (activeFilter === "MONTHLY") {
+      // For the unified ALL inbox, loadAllInboxToday would be used for TODAY;
+      // MOSTLY is independent of selectedAccount (works for USER-wide), but we respect selectedAccount
+      if (selectedAccount === "ALL") {
+        // we still call the unified /api/inbox/mostly
+        loadMonthly();
+      } else {
+        // option: compute mostly for a single connected account (server route supports userId+filter)
+        loadMonthly();
+      }
+    }
   }, [selectedAccount, currentFolder, activeFilter]);
   // FILTER LOADERS
   async function loadToday() {
@@ -331,12 +342,25 @@ export default function Dashboard() {
 
   function getAvatarInitial(fromField?: string): string {
     if (!fromField || typeof fromField !== "string") return "M";
-    const nameMatch = fromField.match(/^[^<]+/);
-    if (nameMatch && nameMatch[0].trim().length > 0)
-      return nameMatch[0].trim().charAt(0).toUpperCase();
+  
+    // Extract name before <email>
+    let name = fromField.split("<")[0].trim();
+  
+    // Remove quotes: "TaTT" → TaTT
+    name = name.replace(/["']/g, "");
+  
+    // Find the first alphabetical character only
+    const match = name.match(/[A-Za-z]/);
+    if (match) return match[0].toUpperCase();
+  
+    // If no name available, fallback to email local-part
     const emailMatch = fromField.match(/^([^@]+)/);
-    if (emailMatch && emailMatch[1])
-      return emailMatch[1].charAt(0).toUpperCase();
+    if (emailMatch && emailMatch[1]) {
+      const emailInitial = emailMatch[1].match(/[A-Za-z]/);
+      if (emailInitial) return emailInitial[0].toUpperCase();
+    }
+  
+    // Default fallback
     return "M";
   }
 
@@ -437,50 +461,56 @@ export default function Dashboard() {
     }
   }
 
-  async function loadAllInboxToday() {
+  async function loadMonthly() {
     setLoadingMessages(true);
-    const token = localStorage.getItem("token");
-  
     try {
-      const res = await fetch(`${API_BASE}/api/inbox/today`, {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API_BASE}/api/inbox/monthly?limitSenders=8&lookbackDays=30`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-  
       const data = await res.json();
-      const emails = (Array.isArray(data.emails) ? data.emails : []) as (
-        DashboardMessage & { _id?: string }
-      )[];
+      const emails = Array.isArray(data.emails) ? data.emails : [];
   
-      // Group by threadId like Gmail list
-      const grouped: DashboardMessage[] = Object.values(
-        emails.reduce<Record<string, DashboardMessage>>((acc, msg) => {
-          const key = msg.threadId || msg._id || msg.id;
-          if (!acc[key]) {
-            acc[key] = {
-              ...msg,
-              id: (msg._id || msg.messageId || msg.id), // important for ThreadViewer
-              count: 1,
-            };
-          } else {
-            acc[key].count = (acc[key].count || 1) + 1;
-          }
+      // Group by thread (or messageId) like other loaders
+      const grouped = Object.values(
+        emails.reduce((acc: any, msg: any) => {
+          const key = msg.threadId || msg._id || msg.messageId || msg.id;
+          if (!acc[key]) acc[key] = { ...msg, id: (msg._id || msg.messageId || msg.id), count: 1 };
+          else acc[key].count++;
           return acc;
         }, {})
       );
   
       setMessages(grouped);
-      setNextPageToken(null); // Disable pagination for ALL inbox
+      setNextPageToken(null);
     } catch (err) {
-      console.error("Unified inbox load error:", err);
+      console.error("Load monthly error:", err);
+    } finally {
+      setLoadingMessages(false);
     }
-  
-    setLoadingMessages(false);
   }
 
   function logout() {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     router.push("/login");
+  }
+
+  function cleanSubject(subject?: string): string {
+    if (!subject || typeof subject !== "string") return "(No Subject)";
+  
+    let text = subject.trim();
+  
+    // Remove ALL QUOTES: " ' ` “ ” ‘ ’
+    text = text.replace(/["'`“”‘’]/g, "");
+  
+    // Remove emojis + weird symbols EXCEPT allowed characters
+    text = text.replace(/[^\p{L}\p{N}\s\-'.(),!?&:]/gu, "");
+  
+    // Collapse multiple spaces
+    text = text.replace(/\s+/g, " ");
+  
+    return text.trim() || "(No Subject)";
   }
   
 
@@ -490,7 +520,7 @@ export default function Dashboard() {
   return (
     <div className="flex h-screen text-gray-800 text-[14px] leading-tight">
   {/* LEFT PANEL - Sidebar (Fixed Width) */}
-  <aside className="w-[210px] ml-2 mt-2 mb-2 border-gray-300 flex flex-col bg-gray-50 flex-shrink-0 overflow-hidden">
+  <aside className="w-[210px] ml-2 mt-2 mb-2 border-gray-300 flex flex-col flex-shrink-0 overflow-hidden">
     {/* TOP SECTION: User Info & All Inbox */}
     <div className="p-4 flex flex-col gap-6">
       {/* User Header */}
@@ -503,14 +533,14 @@ export default function Dashboard() {
         </div>
         <button
           onClick={connectNewGmail}
-          className="p-1.5 bg-blue-600 cursor-pointer text-white rounded-md hover:bg-blue-700 transition"
+          className="p-1.5 bg-gray-700 cursor-pointer text-white rounded-md hover:bg-blue-600 transition"
           title="Connect Gmail Account"
         >
           <Plus className="w-4 h-4" />
         </button>
       </div>
       {/* Search */}
-      <div className="px-4 py-2 border-b border-gray-100 sticky top-[48px] bg-white z-10">
+      <div className="border-b border-gray-200">
         <div className="flex items-center bg-gray-50 border border-gray-200 rounded-md px-3 py-2 shadow-sm">
           <Search className="w-4 h-4 text-gray-400 mr-2" />
           <input
@@ -531,7 +561,9 @@ export default function Dashboard() {
             }}
           />
         </div>
+        
       </div>
+      <span className="border-b border-gray-200"></span>
 
       {/* All Inbox Tab */}
       <div
@@ -645,13 +677,9 @@ export default function Dashboard() {
   {/* MAIN CONTENT AREA - Dynamic Flex Layout */}
   <div className="flex-1 m-1 flex overflow-hidden">
     {/* MIDDLE PANEL - Email List */}
-    <section 
-  className={`border-r border-l mt-2 mb-3 border-gray-200 bg-gray-50 flex flex-col transition-all duration-300 ease-in-out overflow-x-hidden rounded-xl ${
-    selectedMessage 
-      ? "w-3/8" 
-      : "flex-1"
-  }`}
->
+    <section
+      className="border-r border-l mt-1 mr-0.5 mb-3 border-gray-200 bg-white flex flex-col overflow-x-hidden rounded-xl w-[470px]"
+    >
 
   {/* Header */}
   <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4 sticky top-0 bg-white z-10">
@@ -664,13 +692,13 @@ export default function Dashboard() {
   </div>
 
   {/* Filter Bar */}
-  <div className="flex items-center gap-3 px-5 py-3 border-b border-gray-200 bg-white sticky top-[56px] z-10">
+  <div className="flex items-center cursor-pointer gap-3 px-5 py-3 border-b border-gray-200 bg-white sticky top-[56px] z-10">
     <span className = "mr-2">Filter :</span>
-    {["TODAY", "YESTERDAY", "WEEK"].map((f) => (
+    {["TODAY", "YESTERDAY", "WEEK","MONTHLY"].map((f) => (
       <button
         key={f}
         onClick={() => setActiveFilter(f)}
-        className={`px-3 py-1.5 text-xs font-medium rounded-md transition ${
+        className={`px-3 py-1.5 cursor-pointer text-sm font-medium rounded-md transition ${
           activeFilter === f
             ? "bg-purple-100 text-purple-700"
             : "bg-white text-gray-600 hover:bg-gray-100"
@@ -684,8 +712,8 @@ export default function Dashboard() {
   {/* Email List */}
   <div className="flex-1 p-2 overflow-y-auto space-y-2">
     {loadingMessages && (
-      <div className="p-4 flex items-center justify-center">
-        <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+      <div className="p-7 flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-gray-800" />
       </div>
     )}
     {!loadingMessages && (
@@ -719,7 +747,7 @@ export default function Dashboard() {
                     ? (msg._id || msg.messageId || msg.id)
                     : (msg.id || msg.messageId || msg._id))
                 }
-                className={`group flex items-start gap-3 px-4 py-3 cursor-pointer transition-all rounded-lg bg-white border-l-4 ${
+                className={`group flex items-start gap-3 px-4 py-3 cursor-pointer transition-all rounded-lg ${
                   selectedThreadId === (msg.threadId || msg.id) ||
                   (selectedMessage?.messages?.some(
                     (m) =>
@@ -728,12 +756,12 @@ export default function Dashboard() {
                       (selectedMessage?.threadId &&
                         selectedMessage.threadId === msg.threadId)
                   ) ?? false)
-                    ? "border-l-purple-500 bg-purple-50 shadow-sm"
-                    : "border-l-transparent hover:border-l-gray-300 hover:shadow-sm"
+                    ? "bg-gray-100 border border-gray-300 shadow-sm" 
+                    : "bg-white border-l-transparent hover:bg-gray-50 hover:border-l-gray-300 hover:shadow-sm"
                 }`}
               >
                 {/* Avatar */}
-                <div className="w-10 h-10 flex-shrink-0 rounded-full bg-gradient-to-br from-purple-400 to-pink-400 text-white flex items-center justify-center text-sm font-semibold uppercase shadow-sm">
+                <div className="w-10 h-10 flex-shrink-0 rounded-full bg-gray-700 text-white flex items-center justify-center text-sm font-semibold uppercase shadow-sm">
                   {getAvatarInitial(msg.from)}
                 </div>
 
@@ -764,7 +792,7 @@ export default function Dashboard() {
 
                   {/* Subject */}
                   <p className="text-sm font-medium text-gray-900 truncate mb-1">
-                    {msg.subject || "(No Subject)"}
+                  {cleanSubject(msg.subject) || "No Subject"}
                   </p>
 
                   {/* Bottom Row: Category tag + Account email + Attachments */}
@@ -851,13 +879,13 @@ export default function Dashboard() {
 
     {/* RIGHT PANEL - Thread Viewer (Slides in/out) */}
     <section 
-      className={`bg-white mt-2 mb-3 rounded-xl overflow-hidden transition-all duration-300 ease-in-out ${
+      className={`bg-white mt-1 mb-3 rounded-xl border border-gray-200 overflow-hidden transition-all duration-300 ease-in-out ${
         selectedMessage 
           ? "w-2/3 opacity-100" // 50% width and visible when open
           : "w-0 opacity-0"      // Hidden when closed
       }`}
     >
-      <div className="h-full overflow-y-auto p-1">
+      <div className="h-full overflow-y-auto">
         {loadingThread ? (
           <ThreadSkeleton />
         ) : selectedMessage ? (

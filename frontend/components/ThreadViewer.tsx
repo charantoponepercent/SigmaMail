@@ -29,6 +29,30 @@ interface ThreadViewerProps {
   onNext: () => void;
 }
 
+function getAvatarInitial(fromField?: string): string {
+  if (!fromField || typeof fromField !== "string") return "M";
+
+  // Extract name before <email>
+  let name = fromField.split("<")[0].trim();
+
+  // Remove quotes: "TaTT" → TaTT
+  name = name.replace(/["']/g, "");
+
+  // Find the first alphabetical character only
+  const match = name.match(/[A-Za-z]/);
+  if (match) return match[0].toUpperCase();
+
+  // If no name available, fallback to email local-part
+  const emailMatch = fromField.match(/^([^@]+)/);
+  if (emailMatch && emailMatch[1]) {
+    const emailInitial = emailMatch[1].match(/[A-Za-z]/);
+    if (emailInitial) return emailInitial[0].toUpperCase();
+  }
+
+  // Default fallback
+  return "M";
+}
+
 export default function ThreadViewer({ thread, onClose, onPrev, onNext }: ThreadViewerProps) {
   if (!thread?.messages?.length) return null;
 
@@ -42,39 +66,57 @@ export default function ThreadViewer({ thread, onClose, onPrev, onNext }: Thread
   return (
     <div className="flex flex-col h-full overflow-hidden bg-white">
       {/* TOP ACTION BAR — Zero‑style */}
-      <div className="flex items-center justify-between px-4 py-3 border-b bg-white sticky top-0 z-40 shadow-sm">
+      <div className="flex items-center justify-between px-4 py-3 bg-white sticky top-0 z-40">
         <div className="flex items-center gap-2">
-          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-md">
-            <X className="w-4 h-4" />
+          <button onClick={onClose} className="p-2 cursor-pointer hover:bg-gray-100 rounded-md">
+            <X className="w-4.5 h-4.5" />
           </button>
-          <button onClick={onPrev} className="p-2 hover:bg-gray-100 rounded-md">
-            <ChevronLeft className="w-4 h-4" />
+          <button onClick={onPrev} className="p-2 cursor-pointer hover:bg-gray-100 rounded-md">
+            <ChevronLeft className="w-4.5 h-4.5" />
           </button>
-          <button onClick={onNext} className="p-2 hover:bg-gray-100 rounded-md">
-            <ChevronRight className="w-4 h-4" />
+          <button onClick={onNext} className="p-2 cursor-pointer hover:bg-gray-100 rounded-md">
+            <ChevronRight className="w-4.5 h-4.5" />
           </button>
         </div>
       </div>
 
       {/* SUBJECT BAR */}
-      <div className="px-6 py-4 bg-white border-b shadow-sm">
-        <h1 className="text-2xl font-semibold text-gray-900 leading-tight tracking-tight">
+      <div className="px-6 py-4 bg-white shadow-sm">
+        <h1 className="text-xl text-gray-900 leading-tight tracking-tight">
           {sorted[sorted.length - 1].subject || "(No Subject)"}
         </h1>
 
         <div className="mt-2 flex items-center gap-3">
           <span
-            className="inline-flex items-center gap-2 bg-blue-500 text-white text-sm px-3 py-1 rounded-full shadow-sm"
+            className="inline-flex items-center gap-2 bg-gray-700 text-white text-sm px-4 py-2 rounded-full shadow-sm"
             title={sorted[sorted.length - 1].from || ""}
           >
-            {(sorted[sorted.length - 1].from || "").split("<")[0].trim()}
+            {(() => {
+              const raw =
+                (sorted[sorted.length - 1].from || "")
+                  .split("<")[0]
+                  .trim()
+                  .replace(/["']/g, ""); // remove quotes
+
+              const initial = raw[0]?.toUpperCase() || "U";
+
+              return (
+                <>
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-blue-600 text-white text-xs">
+                    {initial}
+                  </span>
+
+                  {raw}
+                </>
+              );
+            })()}
           </span>
         </div>
       </div>
 
       {/* BODY */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden">
-        <div className="max-w-3xl mx-auto px-6 py-8 space-y-12 w-full">
+        <div className="max-w-3xl mx-auto py-6 space-y-12 w-full">
           {sorted.map((msg, idx) => {
             const body =
               msg.body ||
@@ -86,14 +128,14 @@ export default function ThreadViewer({ thread, onClose, onPrev, onNext }: Thread
 
             return (
               <div key={msg._id || msg.messageId || idx}>
-                <div className="flex items-start justify-between border-b pb-6 mb-6">
+                <div className="flex items-start justify-between pb-6 mb-2">
                   <div className="flex items-center gap-4 min-w-0">
-                    <div className="w-11 h-11 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-semibold text-sm uppercase">
-                      {msg.from?.[0] || "?"}
+                    <div className="w-11 h-11 rounded-full bg-gray-700 text-white flex items-center justify-center">
+                      {getAvatarInitial(msg.from)}
                     </div>
 
                     <div className="min-w-0">
-                      <p className="text-base font-medium text-gray-900 truncate">
+                      <p className="text-base text-gray-900 truncate">
                         {msg.from?.split("<")[0]?.trim() || "Unknown"}
                       </p>
                       <p className="text-sm text-gray-500 truncate">

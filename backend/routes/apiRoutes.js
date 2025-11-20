@@ -563,6 +563,33 @@ router.get('/inbox/week', async (req, res) => {
   }
 });
 
+
+router.get("/inbox/monthly", async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const end = new Date();
+    end.setHours(23, 59, 59, 999);
+
+    const start = new Date();
+    start.setDate(start.getDate() - 29); // last 30 days including today
+    start.setHours(0, 0, 0, 0);
+
+    const emails = await Email.find({
+      userId,
+      labelIds: { $in: ["INBOX"] },
+      date: { $gte: start, $lte: end },
+    })
+      .sort({ date: -1 })
+      .lean();
+
+    res.json({ emails });
+  } catch (err) {
+    console.error("Error loading monthly inbox:", err);
+    res.status(500).json({ error: "Failed to load monthly inbox" });
+  }
+});
+
 export default router;
 
 
