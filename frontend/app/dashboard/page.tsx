@@ -520,159 +520,165 @@ export default function Dashboard() {
   return (
     <div className="flex h-screen text-gray-800 text-[14px] leading-tight">
   {/* LEFT PANEL - Sidebar (Fixed Width) */}
-  <aside className="w-[210px] ml-2 mt-2 mb-2 border-gray-300 flex flex-col flex-shrink-0 overflow-hidden">
-    {/* TOP SECTION: User Info & All Inbox */}
-    <div className="p-4 flex flex-col gap-6">
-      {/* User Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-base font-semibold text-gray-800 tracking-tight">
-            {user?.name || "User"}
-          </h1>
-          <p className="text-xs text-gray-500 mt-0.5">Personal Workspace</p>
-        </div>
-        <button
-          onClick={connectNewGmail}
-          className="p-1.5 bg-gray-700 cursor-pointer text-white rounded-md hover:bg-blue-600 transition"
-          title="Connect Gmail Account"
-        >
-          <Plus className="w-4 h-4" />
-        </button>
+  <aside className="w-[220px] ml-2 mt-2 mb-2 flex flex-col flex-shrink-0 overflow-hidden border-r border-gray-200 bg-white rounded-xl shadow-sm">
+  
+  {/* TOP LOGO */}
+  <div className="px-4 pt-4 pb-2">
+    <div className="flex items-center gap-2">
+      <div className="w-7 h-7 rounded-md bg-gray-800 text-white flex items-center justify-center font-bold text-sm">
+        S
       </div>
-      {/* Search */}
-      <div className="border-b border-gray-200">
-        <div className="flex items-center bg-gray-50 border border-gray-200 rounded-md px-3 py-2 shadow-sm">
-          <Search className="w-4 h-4 text-gray-400 mr-2" />
-          <input
-            type="text"
-            placeholder="Search mail"
-            className="w-full text-sm bg-transparent outline-none placeholder-gray-400"
-            onChange={(e) => {
-              const q = e.target.value.toLowerCase();
-              setMessages((prev) =>
-                prev.map((msg) => ({
-                  ...msg,
-                  hidden: q
-                    ? !msg.subject?.toLowerCase().includes(q) &&
-                      !msg.from?.toLowerCase().includes(q)
-                    : false,
-                }))
-              );
-            }}
-          />
-        </div>
-        
-      </div>
-      <span className="border-b border-gray-200"></span>
+      <h1 className="text-lg font-bold tracking-tight text-gray-800">
+        SIGMAMAIL
+      </h1>
+    </div>
+  </div>
 
-      {/* All Inbox Tab */}
-      <div
-        onClick={() => {
-          setSelectedAccount("ALL");
-          setActiveFilter("TODAY");
-          loadToday();
+  {/* SEARCH BAR */}
+  <div className="px-4 mt-4">
+    <div className="relative group">
+      <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+      <input
+        type="text"
+        placeholder="Search mail"
+        className="w-full pl-10 pr-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+        onChange={(e) => {
+          const q = e.target.value.toLowerCase();
+          setMessages((prev) =>
+            prev.map((msg) => ({
+              ...msg,
+              hidden: q
+                ? !msg.subject?.toLowerCase().includes(q) &&
+                  !msg.from?.toLowerCase().includes(q)
+                : false,
+            }))
+          );
         }}
-        className={`flex items-center gap-3 px-3 py-2.5 cursor-pointer rounded-lg transition-all border
-          ${
-            selectedAccount === "ALL"
-              ? "bg-white border-gray-200 shadow-sm text-gray-900"
-              : "border-transparent hover:bg-gray-100 text-gray-600"
-          }
-        `}
-      >
-        <Inbox className={`w-4 h-4 ${selectedAccount === "ALL" ? "text-blue-600" : "text-gray-500"}`} />
-        <span className="text-[13.5px] font-medium">All Inbox</span>
-      </div>
+      />
     </div>
+  </div>
 
-    {/* SPACER to push accounts to bottom */}
-    <div className="flex-1"></div>
+  {/* INBOX SECTION */}
+  <div className="px-4 mt-6 mb-2">
+    <h3 className="text-[11px] font-semibold text-gray-400 uppercase tracking-widest">
+      Inbox
+    </h3>
 
-    {/* BOTTOM SECTION: Connected Accounts & Settings */}
-    <div className="p-4 pt-0">
-      {/* Connected Accounts */}
-      <div className="mb-4">
-        <h2 className="text-[11px] font-semibold text-gray-400 uppercase mb-2 tracking-widest px-1">
-          Connected Accounts
-        </h2>
+    <div
+      onClick={() => {
+        setSelectedAccount("ALL");
+        setActiveFilter("TODAY");
+        loadToday();
+      }}
+      className={`mt-3 flex items-center gap-3 px-3 py-2.5 cursor-pointer rounded-lg transition-all border
+        ${
+          selectedAccount === "ALL"
+            ? "bg-white border-gray-200 shadow-sm text-gray-900"
+            : "border-transparent hover:bg-gray-100 text-gray-600"
+        }
+      `}
+    >
+      <Inbox className={`w-4 h-4 ${selectedAccount === "ALL" ? "text-blue-600" : "text-gray-500"}`} />
+      <span className="text-[13.5px] font-medium">All Inbox</span>
+    </div>
+  </div>
 
-        <div className="space-y-1 max-h-[200px] overflow-y-auto custom-scrollbar">
-          {accounts.length === 0 ? (
-            <p className="text-xs text-gray-400 italic px-1">
-              No accounts connected
-            </p>
-          ) : (
-            accounts.map((acc) => (
-              <div
-                key={acc._id}
-                className={`group relative flex items-center justify-between gap-2 px-2 py-2 rounded-lg cursor-pointer transition-all duration-200 ${
-                  selectedAccount === acc.email
-                    ? "bg-white shadow-sm text-gray-900"
-                    : "hover:bg-gray-100 text-gray-600"
-                }`}
-                onClick={() => setSelectedAccount(acc.email)}
-              >
-                <div className="flex items-center gap-2.5 truncate">
-                  <div className="w-5 h-5 rounded-full bg-gradient-to-br from-gray-100 to-gray-200 border border-gray-300 flex items-center justify-center text-gray-600 text-[10px] font-bold uppercase">
-                    {acc.email[0]}
-                  </div>
-                  <span className="truncate text-[13px] font-medium">
-                    {acc.email}
-                  </span>
-                </div>
+  {/* SPACER */}
+  <div className="flex-1"></div>
 
-                {/* Options */}
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <button
-                      onClick={(e) => e.stopPropagation()}
-                      className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-gray-200 transition-all"
-                      title="More options"
-                    >
-                      <EllipsisVertical className="w-3.5 h-3.5 text-gray-500" />
-                    </button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent
-                    align="end"
-                    className="min-w-[140px] bg-white shadow-lg border border-gray-100 rounded-md p-1"
-                  >
-                    <DropdownMenuItem
-                      onClick={() => {
-                        setAccountToDisconnect(acc.email);
-                        setShowDialog(true);
-                      }}
-                      className="text-[13px] text-red-600 font-medium cursor-pointer rounded-sm hover:bg-red-50"
-                    >
-                      Disconnect
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+  {/* CONNECTED ACCOUNTS */}
+  <button
+      onClick={connectNewGmail}
+      className="w-[200px] ml-2 cursor-pointer flex items-center justify-center gap-2 py-2 mb-3 bg-blue-500 text-white text-sm rounded-md hover:bg-blue-600 transition"
+    >
+      Connect Mail
+      <Plus className="w-4 h-4" />
+      
+    </button>
+  <div className="px-4 pb-4">
+
+    {/* Connect New Account Button */}
+    
+
+    <h2 className="text-[11px] font-semibold text-gray-400 uppercase mb-2 tracking-widest px-1">
+      Connected Accounts
+    </h2>
+
+    <div className="space-y-1 max-h-[200px] overflow-y-auto custom-scrollbar">
+      {accounts.length === 0 ? (
+        <p className="text-xs text-gray-400 italic px-1">
+          No accounts connected
+        </p>
+      ) : (
+        accounts.map((acc) => (
+          <div
+            key={acc._id}
+            className={`group relative flex items-center justify-between gap-2 px-2 py-2 rounded-lg cursor-pointer transition-all duration-200 ${
+              selectedAccount === acc.email
+                ? "bg-white shadow-sm text-gray-900 border border-gray-200"
+                : "hover:bg-gray-100 text-gray-600"
+            }`}
+            onClick={() => setSelectedAccount(acc.email)}
+          >
+            <div className="flex items-center gap-2.5 truncate">
+              <div className="w-6 h-5 rounded-full bg-gradient-to-br from-gray-100 to-gray-200 border border-gray-300 flex items-center justify-center text-gray-600 text-[10px] font-bold uppercase">
+                {acc.email[0]}
               </div>
-            ))
-          )}
-        </div>
-      </div>
+              <span className="truncate text-[13px] font-medium">
+                {acc.email}
+              </span>
+            </div>
 
-      {/* Settings & Logout */}
-      <div className="border-t border-gray-200 pt-3 space-y-1">
-        <button
-          onClick={() => alert("Settings clicked")}
-          className="w-full flex items-center justify-between hover:bg-gray-100 px-2 py-2 rounded-md transition text-gray-600"
-        >
-          <span className="text-[13px] font-medium">Settings</span>
-          <Settings className="w-4 h-4 text-gray-400" />
-        </button>
-
-        <button
-          onClick={logout}
-          className="w-full flex items-center justify-between hover:bg-red-50 px-2 py-2 rounded-md text-red-600 transition"
-        >
-          <span className="text-[13px] font-medium">Logout</span>
-          <LogOut className="w-4 h-4" />
-        </button>
-      </div>
+            {/* Options */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  onClick={(e) => e.stopPropagation()}
+                  className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-gray-200 transition-all"
+                >
+                  <EllipsisVertical className="w-3.5 h-3.5 text-gray-500" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="end"
+                className="min-w-[140px] bg-white shadow-lg border border-gray-100 rounded-md p-1"
+              >
+                <DropdownMenuItem
+                  onClick={() => {
+                    setAccountToDisconnect(acc.email);
+                    setShowDialog(true);
+                  }}
+                  className="text-[13px] text-red-600 font-medium cursor-pointer rounded-sm hover:bg-red-50"
+                >
+                  Disconnect
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        ))
+      )}
     </div>
-  </aside>
+
+    {/* Settings & Logout */}
+    <div className="border-t border-gray-200 pt-3 space-y-1 mt-4">
+      <button
+        onClick={() => alert("Settings clicked")}
+        className="w-full flex items-center justify-between hover:bg-gray-100 px-2 py-2 rounded-md transition text-gray-600"
+      >
+        <span className="text-[13px] font-medium">Settings</span>
+        <Settings className="w-4 h-4 text-gray-400" />
+      </button>
+
+      <button
+        onClick={logout}
+        className="w-full flex items-center justify-between hover:bg-red-50 px-2 py-2 rounded-md text-red-600 transition"
+      >
+        <span className="text-[13px] font-medium">Logout</span>
+        <LogOut className="w-4 h-4" />
+      </button>
+    </div>
+  </div>
+</aside>
 
   {/* MAIN CONTENT AREA - Dynamic Flex Layout */}
   <div className="flex-1 m-1 flex overflow-hidden">
@@ -698,9 +704,9 @@ export default function Dashboard() {
       <button
         key={f}
         onClick={() => setActiveFilter(f)}
-        className={`px-3 py-1.5 cursor-pointer text-sm font-medium rounded-md transition ${
+        className={`px-3 py-1.5 cursor-pointer text-[12px] font-medium rounded-xl transition ${
           activeFilter === f
-            ? "bg-purple-100 text-purple-700"
+            ? "bg-gray-300 border text-black"
             : "bg-white text-gray-600 hover:bg-gray-100"
         }`}
       >
@@ -761,7 +767,7 @@ export default function Dashboard() {
                 }`}
               >
                 {/* Avatar */}
-                <div className="w-10 h-10 flex-shrink-0 rounded-full bg-gray-700 text-white flex items-center justify-center text-sm font-semibold uppercase shadow-sm">
+                <div className="w-10 h-10 flex-shrink-0 rounded-full border border-gray-300 text-black flex items-center justify-center text-sm font-semibold uppercase shadow-sm">
                   {getAvatarInitial(msg.from)}
                 </div>
 
@@ -770,7 +776,7 @@ export default function Dashboard() {
                   {/* Top Row: Sender, Badge, Date */}
                   <div className="flex items-center justify-between gap-2 mb-1">
                     <div className="flex items-center gap-2 min-w-0 flex-1">
-                      <h3 className="text-sm font-semibold text-gray-900 truncate">
+                      <h3 className="text-[14px] font-semibold text-gray-900 truncate">
                         {msg.from?.split("<")[0].trim() || "Unknown Sender"}
                       </h3>
                       {/* Priority or Bill Due badge */}
@@ -791,7 +797,7 @@ export default function Dashboard() {
                   </div>
 
                   {/* Subject */}
-                  <p className="text-sm font-medium text-gray-900 truncate mb-1">
+                  <p className="text-[12px] font-medium text-gray-500 truncate mb-1">
                   {cleanSubject(msg.subject) || "No Subject"}
                   </p>
 

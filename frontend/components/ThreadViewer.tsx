@@ -66,8 +66,8 @@ export default function ThreadViewer({ thread, onClose, onPrev, onNext }: Thread
   return (
     <div className="flex flex-col h-full overflow-hidden bg-white">
       {/* TOP ACTION BAR — Zero‑style */}
-      <div className="flex items-center justify-between px-4 py-3 bg-white sticky top-0 z-40">
-        <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between px-3 py-3 bg-white sticky top-0 z-40">
+        <div className="flex border rounded-xl p-1 items-center gap-2">
           <button onClick={onClose} className="p-2 cursor-pointer hover:bg-gray-100 rounded-md">
             <X className="w-4.5 h-4.5" />
           </button>
@@ -81,14 +81,14 @@ export default function ThreadViewer({ thread, onClose, onPrev, onNext }: Thread
       </div>
 
       {/* SUBJECT BAR */}
-      <div className="px-6 py-4 bg-white shadow-sm">
-        <h1 className="text-xl text-gray-900 leading-tight tracking-tight">
+      <div className="px-4 py-4 bg-white shadow-sm">
+        <h1 className="text-xl font-semibold text-gray-900 leading-tight tracking-tight">
           {sorted[sorted.length - 1].subject || "(No Subject)"}
         </h1>
 
         <div className="mt-2 flex items-center gap-3">
           <span
-            className="inline-flex items-center gap-2 bg-gray-700 text-white text-sm px-4 py-2 rounded-full shadow-sm"
+            className="inline-flex items-center gap-2 text-[12px] border text-black px-2 py-1 rounded-full"
             title={sorted[sorted.length - 1].from || ""}
           >
             {(() => {
@@ -129,13 +129,13 @@ export default function ThreadViewer({ thread, onClose, onPrev, onNext }: Thread
             return (
               <div key={msg._id || msg.messageId || idx}>
                 <div className="flex items-start justify-between pb-6 mb-2">
-                  <div className="flex items-center gap-4 min-w-0">
-                    <div className="w-11 h-11 rounded-full bg-gray-700 text-white flex items-center justify-center">
+                  <div className="flex gap-4 min-w-0">
+                    <div className="w-11 h-11 rounded-full border border-gray-400 shadow-sm text-black flex text-md items-center justify-center">
                       {getAvatarInitial(msg.from)}
                     </div>
 
                     <div className="min-w-0">
-                      <p className="text-base text-gray-900 truncate">
+                      <p className="text-base font-semibold text-gray-900 truncate">
                         {msg.from?.split("<")[0]?.trim() || "Unknown"}
                       </p>
                       <p className="text-sm text-gray-500 truncate">
