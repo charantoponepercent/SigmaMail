@@ -59,12 +59,17 @@ function getAvatarInitial(fromField?: string): string {
 
 export default function ThreadViewer({ thread, onClose, onPrev, onNext }: ThreadViewerProps) {
   const [preview, setPreview] = useState(null);
+  const [openMessage, setOpenMessage] = useState<number | null>(null);
+  const toggleMessage = (index: number) => {
+    setOpenMessage(prev => (prev === index ? null : index));
+  };
 
   if (!thread?.messages?.length) return null;
 
   const sorted = [...thread.messages].sort(
     (a, b) => (a.date ? new Date(a.date).getTime() : 0) - (b.date ? new Date(b.date).getTime() : 0)
   );
+  const enableCollapse = sorted.length > 2;
 
   const accountEmail =
     thread.account || (sorted[0] && sorted[0].account) || "";
@@ -134,76 +139,96 @@ export default function ThreadViewer({ thread, onClose, onPrev, onNext }: Thread
 
             return (
               <div key={msg._id || msg.messageId || idx}>
-                <div className="flex items-start justify-between pb-6 mb-2">
+                <div
+                  className="flex items-start justify-between pb-6 mb-2 cursor-pointer transition-colors duration-200 hover:bg-gray-50 rounded-lg"
+                  onClick={enableCollapse ? () => toggleMessage(idx) : undefined}
+                >
                   <div className="flex gap-4 min-w-0">
                     <div className="w-11 h-11 rounded-full border border-gray-400 shadow-sm text-black flex text-md items-center justify-center">
                       {getAvatarInitial(msg.from)}
                     </div>
 
                     <div className="min-w-0">
-                      <p className="text-base font-semibold text-gray-900 truncate">
+                      <p className="text-base text-[15px] font-semibold text-gray-900 truncate">
                         {msg.from?.split("<")[0]?.trim() || "Unknown"}
                       </p>
-                      <p className="text-sm text-gray-500 truncate">
+                      <p className="text-[13px] text-gray-500 truncate">
                         To: {msg.to?.split("<")[0]?.trim() || "You"}
                       </p>
                     </div>
                   </div>
 
-                  <span className="text-sm text-gray-500 whitespace-nowrap ml-6">
-                    {msg.date ? format(new Date(msg.date), "PPpp") : ""}
-                  </span>
-                </div>
+                  <div className="flex items-center gap-3 ml-6">
+                    {enableCollapse && (
+                      <div
+                        className="flex flex-col items-center justify-center w-3 cursor-pointer select-none transition-transform duration-200"
+                        onClick={() => toggleMessage(idx)}
+                      >
+                        {openMessage !== idx ? (
+                          <div className="flex flex-col items-center gap-[2px] transition-all duration-200 group-hover:scale-110">
+                            <span className="w-1 h-1 bg-gray-400 rounded-full"></span>
+                            <span className="w-1 h-1 bg-gray-400 rounded-full"></span>
+                          </div>
+                        ) : (
+                          <div className="w-2 h-[2px] bg-gray-500 rounded-full transition-all duration-200 group-hover:scale-110"></div>
+                        )}
+                      </div>
+                    )}
 
-                <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
-                  <div className="px-8 py-8 w-full overflow-x-hidden">
-                    <div className="prose max-w-none w-full">
-                      {msg.attachments && msg.attachments.length > 0 && (
-                        <div className="mb-6 flex flex-wrap gap-4">
-                          {msg.attachments.map((att, i) => {
-                            const isImage = att.mimeType?.startsWith("image/");
-
-                            return (
-                              <div
-                                key={i}
-                                className="border rounded-lg p-3 bg-gray-50 w-40 shadow-sm hover:shadow cursor-pointer"
-                                onClick={() => setPreview(att)}
-                              >
-                                {isImage ? (
-                                  <img
-                                    src={
-                                      att.storageUrl ||
-                                      `/api/gmail/attachment/${msg.id}/${encodeURIComponent(
-                                        att.filename
-                                      )}?account=${accountEmail}`
-                                    }
-                                    alt={att.filename}
-                                    className="w-full h-28 object-cover rounded-md"
-                                  />
-                                ) : (
-                                  <div className="w-full h-28 flex items-center justify-center bg-white rounded-md border text-sm text-gray-500">
-                                    {att.mimeType?.split("/")[1]?.toUpperCase() || "FILE"}
-                                  </div>
-                                )}
-
-                                <p className="text-xs mt-2 font-medium text-gray-800 truncate">
-                                  {att.filename}
-                                </p>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                      <SecureEmailViewer
-                        html={clean}
-                        senderEmail={msg.from}
-                        messageId={msg.id}
-                        accountEmail={accountEmail}
-                        attachments={msg.attachments}   // ✅ ADD THIS
-                      />
-                    </div>
+                    <span className="text-sm text-gray-500 whitespace-nowrap">
+                      {msg.date ? format(new Date(msg.date), "PPpp") : ""}
+                    </span>
                   </div>
                 </div>
+
+                {(!enableCollapse || openMessage === idx) && (
+                  <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden transition-all duration-300 ease-out">
+                    <div className="px-8 py-8 w-full overflow-x-hidden transition-opacity duration-300 opacity-100">
+                      <div className="prose max-w-none w-full">
+                        {msg.attachments && msg.attachments.length > 0 && (
+                          <div className="mb-6 flex flex-wrap gap-4">
+                            {msg.attachments.map((att, i) => {
+                              const isImage = att.mimeType?.startsWith("image/");
+                              return (
+                                <div
+                                  key={i}
+                                  className="border rounded-lg p-3 bg-gray-50 w-40 shadow-sm hover:shadow cursor-pointer"
+                                  onClick={() => setPreview(att)}
+                                >
+                                  {isImage ? (
+                                    <img
+                                      src={
+                                        att.storageUrl ||
+                                        `/api/gmail/attachment/${msg.id}/${encodeURIComponent(att.filename)}?account=${accountEmail}`
+                                      }
+                                      alt={att.filename}
+                                      className="w-full h-28 object-cover rounded-md"
+                                    />
+                                  ) : (
+                                    <div className="w-full h-28 flex items-center justify-center bg-white rounded-md border text-sm text-gray-500">
+                                      {att.mimeType?.split("/")[1]?.toUpperCase() || "FILE"}
+                                    </div>
+                                  )}
+                                  <p className="text-xs mt-2 font-medium text-gray-800 truncate">
+                                    {att.filename}
+                                  </p>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        <SecureEmailViewer
+                          html={clean}
+                          senderEmail={msg.from}
+                          messageId={msg.id}
+                          accountEmail={accountEmail}
+                          attachments={msg.attachments}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })}

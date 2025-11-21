@@ -687,7 +687,7 @@ export default function Dashboard() {
   <div className="flex-1 m-1 flex overflow-hidden">
     {/* MIDDLE PANEL - Email List */}
     <section
-      className="border mt-1 mr-0.5 mb-3 border-gray-100 shadow-sm bg-white flex flex-col overflow-x-hidden rounded-xl w-[470px]"
+      className="border mt-1 mr-0.5 mb-3 border-gray-100 bg-white flex flex-col overflow-x-hidden rounded-xl w-[470px]"
     >
 
   {/* Header */}
