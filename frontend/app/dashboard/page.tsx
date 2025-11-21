@@ -27,6 +27,10 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { EllipsisVertical } from "lucide-react";
 
@@ -64,7 +68,7 @@ export default function Dashboard() {
   const [mounted, setMounted] = useState(false);
   const [accounts, setAccounts] = useState<DashboardAccount[]>([]);
   const [currentFolder, setCurrentFolder] = useState("INBOX");
-  const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
+  const [selectedAccount, setSelectedAccount] = useState<string>("ALL");
   const [messages, setMessages] = useState<DashboardMessage[]>([]);
   const [nextPageToken, setNextPageToken] = useState<string | null>(null);
   const [selectedMessage, setSelectedMessage] =
@@ -525,7 +529,7 @@ export default function Dashboard() {
   {/* TOP LOGO */}
   <div className="px-4 pt-4 pb-2">
     <div className="flex items-center gap-2">
-      <div className="w-7 h-7 rounded-md bg-gray-800 text-white flex items-center justify-center font-bold text-sm">
+      <div className="w-7 h-7 rounded-md bg-blue-600 text-white flex items-center justify-center font-bold text-sm">
         S
       </div>
       <h1 className="text-lg font-bold tracking-tight text-gray-800">
@@ -573,7 +577,7 @@ export default function Dashboard() {
       className={`mt-3 flex items-center gap-3 px-3 py-2.5 cursor-pointer rounded-lg transition-all border
         ${
           selectedAccount === "ALL"
-            ? "bg-white border-gray-200 shadow-sm text-gray-900"
+            ? "bg-gray-200 border border-gray-100 text-black"
             : "border-transparent hover:bg-gray-100 text-gray-600"
         }
       `}
@@ -589,7 +593,7 @@ export default function Dashboard() {
   {/* CONNECTED ACCOUNTS */}
   <button
       onClick={connectNewGmail}
-      className="w-[200px] ml-2 cursor-pointer flex items-center justify-center gap-2 py-2 mb-3 bg-blue-500 text-white text-sm rounded-md hover:bg-blue-600 transition"
+      className="w-[200px] ml-2 cursor-pointer flex items-center justify-center gap-2 py-2 mb-3 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-600 transition"
     >
       Connect Mail
       <Plus className="w-4 h-4" />
@@ -613,12 +617,11 @@ export default function Dashboard() {
         accounts.map((acc) => (
           <div
             key={acc._id}
-            className={`group relative flex items-center justify-between gap-2 px-2 py-2 rounded-lg cursor-pointer transition-all duration-200 ${
+            className={`group relative flex items-center justify-between gap-2 px-2 py-2 rounded-lg cursor-default transition-all duration-200 ${
               selectedAccount === acc.email
                 ? "bg-white shadow-sm text-gray-900 border border-gray-200"
                 : "hover:bg-gray-100 text-gray-600"
             }`}
-            onClick={() => setSelectedAccount(acc.email)}
           >
             <div className="flex items-center gap-2.5 truncate">
               <div className="w-6 h-5 rounded-full bg-gradient-to-br from-gray-100 to-gray-200 border border-gray-300 flex items-center justify-center text-gray-600 text-[10px] font-bold uppercase">
@@ -684,7 +687,7 @@ export default function Dashboard() {
   <div className="flex-1 m-1 flex overflow-hidden">
     {/* MIDDLE PANEL - Email List */}
     <section
-      className="border-r border-l mt-1 mr-0.5 mb-3 border-gray-200 bg-white flex flex-col overflow-x-hidden rounded-xl w-[470px]"
+      className="border mt-1 mr-0.5 mb-3 border-gray-100 shadow-sm bg-white flex flex-col overflow-x-hidden rounded-xl w-[470px]"
     >
 
   {/* Header */}
@@ -697,22 +700,27 @@ export default function Dashboard() {
     )}
   </div>
 
-  {/* Filter Bar */}
-  <div className="flex items-center cursor-pointer gap-3 px-5 py-3 border-b border-gray-200 bg-white sticky top-[56px] z-10">
-    <span className = "mr-2">Filter :</span>
-    {["TODAY", "YESTERDAY", "WEEK","MONTHLY"].map((f) => (
-      <button
-        key={f}
-        onClick={() => setActiveFilter(f)}
-        className={`px-3 py-1.5 cursor-pointer text-[12px] font-medium rounded-xl transition ${
-          activeFilter === f
-            ? "bg-gray-300 border text-black"
-            : "bg-white text-gray-600 hover:bg-gray-100"
-        }`}
-      >
-        {f}
-      </button>
-    ))}
+  {/* Filter Dropdown */}
+  <div className="px-3 py-3 w-1/3 sticky top-[56px] bg-white z-10">
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button className="w-full text-left bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-[12px] flex items-center justify-between">
+          <span className="truncate">{activeFilter}</span>
+          <svg className="w-4 h-4 text-gray-500" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+            <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06-.02L10 10.94l3.71-3.75a.75.75 0 111.08 1.04l-4.25 4.3a.75.75 0 01-1.08 0L5.25 8.23a.75.75 0 01-.02-1.06z" clipRule="evenodd" />
+          </svg>
+        </button>
+      </DropdownMenuTrigger>
+
+      <DropdownMenuContent className="w-56 ml-24">
+        <DropdownMenuRadioGroup value={activeFilter} onValueChange={(v) => setActiveFilter(v)}>
+          <DropdownMenuRadioItem value="TODAY">Today</DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="YESTERDAY">Yesterday</DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="WEEK">This Week</DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="MONTHLY">This Month</DropdownMenuRadioItem>
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
   </div>
 
   {/* Email List */}
@@ -762,7 +770,7 @@ export default function Dashboard() {
                       (selectedMessage?.threadId &&
                         selectedMessage.threadId === msg.threadId)
                   ) ?? false)
-                    ? "bg-gray-100 border border-gray-300 shadow-sm" 
+                    ? "bg-gray-100 border border-gray-100" 
                     : "bg-white border-l-transparent hover:bg-gray-50 hover:border-l-gray-300 hover:shadow-sm"
                 }`}
               >
@@ -882,7 +890,7 @@ export default function Dashboard() {
 
     {/* RIGHT PANEL - Thread Viewer (Slides in/out) */}
     <section 
-      className={`bg-white mt-1 mb-3 rounded-xl border border-gray-200 overflow-hidden transition-all duration-300 ease-in-out ${
+      className={`bg-white mt-1 mb-3 rounded-xl border border-gray-100 overflow-hidden transition-all duration-300 ease-in-out ${
         selectedMessage 
           ? "w-2/3 opacity-100" // 50% width and visible when open
           : "w-0 opacity-0"      // Hidden when closed

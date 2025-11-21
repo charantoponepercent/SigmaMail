@@ -1,6 +1,6 @@
 export default function ThreadSkeleton() {
     return (
-      <div className="space-y-8 animate-pulse">
+      <div className="space-y-8 p-10 animate-pulse">
         {/* Title */}
         <div className="h-7 w-1/2 bg-gray-200 rounded-xl"></div>
   
