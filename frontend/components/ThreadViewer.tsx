@@ -77,16 +77,16 @@ export default function ThreadViewer({ thread, onClose, onPrev, onNext }: Thread
   return (
     <div className="flex flex-col h-full overflow-hidden bg-white">
       {/* TOP ACTION BAR — Zero‑style */}
-      <div className="flex items-center justify-between px-3 py-3 bg-white sticky top-0 z-40">
+      <div className="flex items-center justify-between px-3 py-1 bg-white sticky top-0 z-40">
         <div className="flex border rounded-xl p-1 items-center gap-2">
           <button onClick={onClose} className="p-2 cursor-pointer hover:bg-gray-100 rounded-md">
-            <X className="w-4.5 h-4.5" />
+            <X className="w-4 h-4" />
           </button>
           <button onClick={onPrev} className="p-2 cursor-pointer hover:bg-gray-100 rounded-md">
-            <ChevronLeft className="w-4.5 h-4.5" />
+            <ChevronLeft className="w-4 h-4" />
           </button>
           <button onClick={onNext} className="p-2 cursor-pointer hover:bg-gray-100 rounded-md">
-            <ChevronRight className="w-4.5 h-4.5" />
+            <ChevronRight className="w-4 h-4" />
           </button>
         </div>
       </div>
