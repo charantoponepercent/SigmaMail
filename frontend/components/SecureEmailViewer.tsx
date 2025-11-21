@@ -1,6 +1,8 @@
+/* eslint-disable @next/next/no-img-element */
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
+import { useMemo } from "react";
 import DOMPurify from "dompurify";
 import { API_BASE } from "@/lib/api";
 
@@ -10,6 +12,7 @@ interface SecureEmailViewerProps {
   messageId: string; // required for lazy attachment fetching
   accountEmail: string; // required for attachment API
   theme?: "light" | "dark";
+  attachments?: { filename: string; mimeType: string; storageUrl?: string }[];
 }
 
 export default function SecureEmailViewer({
@@ -18,6 +21,7 @@ export default function SecureEmailViewer({
   messageId,
   accountEmail,
   theme = "light",
+  attachments = [],
 }: SecureEmailViewerProps) {
   // senderEmail is part of the interface but not currently used in rendering
   // Keeping it for potential future use (e.g., sender verification)
@@ -26,6 +30,7 @@ export default function SecureEmailViewer({
   const shadowRootRef = useRef<ShadowRoot | null>(null);
   const [showImages, setShowImages] = useState(true);
   const [hasBlockedImages, setHasBlockedImages] = useState(false);
+  const [cidImages, setCidImages] = useState<string[]>([]);
 
   // attach shadow root once
   useEffect(() => {
@@ -68,6 +73,12 @@ export default function SecureEmailViewer({
   useEffect(() => {
     const root = shadowRootRef.current;
     if (!root) return;
+
+    // Extract cid images for thumbnail display
+    const foundCids = Array.from(new Set(
+      [...(html.match(/cid:([^"' >]+)/gi) || [])].map(x => x.replace(/^cid:/, "").replace(/[<>]/g, ""))
+    ));
+    setCidImages(foundCids);
 
     // sanitize HTML, allow img & common attributes
     const cleanHTML = DOMPurify.sanitize(html || "<p>(No content)</p>", {
@@ -399,6 +410,66 @@ const observer = new IntersectionObserver(
           maxWidth: "100%",
         }}
       />
+      {cidImages.length > 0 && (
+        <div className="mt-4 flex flex-wrap gap-3">
+          {cidImages.map((cid) => (
+            <ThumbnailLoader
+              key={cid}
+              cid={cid}
+              fetchBase64={fetchAttachmentBase64}
+            />
+          ))}
+        </div>
+      )}
+      {/* {attachments.length > 0 && (
+        <div className="mt-4 flex flex-wrap gap-3">
+          {attachments.map((att) => (
+            <a
+              key={att.filename}
+              href={att.storageUrl || "#"}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-16 h-16 flex items-center justify-center bg-gray-100 rounded-md border overflow-hidden text-xs text-gray-600 hover:bg-gray-200 transition"
+            >
+              {att.mimeType?.startsWith("image/") ? (
+                <img
+                  src={att.storageUrl}
+                  alt={att.filename}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <span className="p-2 text-center break-words">{att.filename}</span>
+              )}
+            </a>
+          ))}
+        </div>
+      )} */}
     </div>
+  );
+}
+
+function ThumbnailLoader({ cid, fetchBase64 }: { cid: string; fetchBase64: (c: string) => Promise<string | null>; }) {
+  const [src, setSrc] = useState<string>("");
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      const b64 = await fetchBase64(cid);
+      if (!mounted) return;
+      if (b64) setSrc(`data:image/png;base64,${b64}`);
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [cid, fetchBase64]);
+
+  if (!src) return <div className="w-16 h-16 bg-gray-200 rounded-md animate-pulse" />;
+
+  return (
+    <img
+      src={src}
+      alt="attachment thumbnail"
+      className="w-16 h-16 object-cover rounded-md border"
+    />
   );
 }

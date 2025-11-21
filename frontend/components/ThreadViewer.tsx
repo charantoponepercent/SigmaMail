@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-img-element */
 "use client";
 
 import React from "react";
@@ -5,10 +6,13 @@ import { X, ChevronLeft, ChevronRight } from "lucide-react";
 import { format } from "date-fns";
 import SecureEmailViewer from "@/components/SecureEmailViewer";
 import extractQuotedSections from "@/lib/extractQuotedSections";
+import AttachmentPreviewModal from "@/components/AttachmentPreviewModal";
+import { useState } from "react";
 
 interface ThreadViewerProps {
   thread: {
     messages?: Array<{
+      attachments: { filename: string; mimeType: string; storageUrl?: string | undefined; }[] | undefined;
       _id?: string;
       messageId?: string;
       id?: string;
@@ -54,6 +58,8 @@ function getAvatarInitial(fromField?: string): string {
 }
 
 export default function ThreadViewer({ thread, onClose, onPrev, onNext }: ThreadViewerProps) {
+  const [preview, setPreview] = useState(null);
+
   if (!thread?.messages?.length) return null;
 
   const sorted = [...thread.messages].sort(
@@ -152,12 +158,48 @@ export default function ThreadViewer({ thread, onClose, onPrev, onNext }: Thread
                 <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
                   <div className="px-8 py-8 w-full overflow-x-hidden">
                     <div className="prose max-w-none w-full">
+                      {msg.attachments && msg.attachments.length > 0 && (
+                        <div className="mb-6 flex flex-wrap gap-4">
+                          {msg.attachments.map((att, i) => {
+                            const isImage = att.mimeType?.startsWith("image/");
+
+                            return (
+                              <div
+                                key={i}
+                                className="border rounded-lg p-3 bg-gray-50 w-40 shadow-sm hover:shadow cursor-pointer"
+                                onClick={() => setPreview(att)}
+                              >
+                                {isImage ? (
+                                  <img
+                                    src={
+                                      att.storageUrl ||
+                                      `/api/gmail/attachment/${msg.id}/${encodeURIComponent(
+                                        att.filename
+                                      )}?account=${accountEmail}`
+                                    }
+                                    alt={att.filename}
+                                    className="w-full h-28 object-cover rounded-md"
+                                  />
+                                ) : (
+                                  <div className="w-full h-28 flex items-center justify-center bg-white rounded-md border text-sm text-gray-500">
+                                    {att.mimeType?.split("/")[1]?.toUpperCase() || "FILE"}
+                                  </div>
+                                )}
+
+                                <p className="text-xs mt-2 font-medium text-gray-800 truncate">
+                                  {att.filename}
+                                </p>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                       <SecureEmailViewer
-                        html={clean || ""}
-                        senderEmail={msg.from || ""}
-                        messageId={msg.id || msg.messageId || ""}
+                        html={clean}
+                        senderEmail={msg.from}
+                        messageId={msg.id}
                         accountEmail={accountEmail}
-                        theme="light"
+                        attachments={msg.attachments}   // ✅ ADD THIS
                       />
                     </div>
                   </div>
@@ -167,6 +209,9 @@ export default function ThreadViewer({ thread, onClose, onPrev, onNext }: Thread
           })}
         </div>
       </div>
+      {preview && (
+        <AttachmentPreviewModal file={preview} onClose={() => setPreview(null)} />
+      )}
     </div>
   );
 }

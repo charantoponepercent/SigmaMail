@@ -440,22 +440,6 @@ router.get("/gmail/thread/:id", async (req, res) => {
 // ----------------------------
 
 
-// GET /api/db/emails/:id  -> single email from DB
-router.get('/db/emails/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const userId = req.user.id;
-
-    const email = await Email.findOne({ _id: id, userId }).lean();
-    if (!email) return res.status(404).json({ error: 'Email not found' });
-
-    res.json(email);
-  } catch (err) {
-    console.error('DB email fetch error:', err);
-    res.status(500).json({ error: 'Failed to fetch email from DB' });
-  }
-});
-
 // GET /api/db/thread/:id -> thread by threadId or by DB _id (fallback)
 router.get('/db/thread/:id', async (req, res) => {
   try {
