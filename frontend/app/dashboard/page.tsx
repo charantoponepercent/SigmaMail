@@ -520,7 +520,7 @@ export default function Dashboard() {
   return (
     <div className="flex h-screen text-gray-800 text-[14px] leading-tight">
   {/* LEFT PANEL - Sidebar (Fixed Width) */}
-  <aside className="w-[220px] ml-2 mt-2 mb-2 flex flex-col flex-shrink-0 overflow-hidden border-r border-gray-200 bg-white rounded-xl shadow-sm">
+  <aside className="w-[220px] ml-2 mt-2 mb-2 flex flex-col flex-shrink-0 overflow-hidden">
   
   {/* TOP LOGO */}
   <div className="px-4 pt-4 pb-2">
