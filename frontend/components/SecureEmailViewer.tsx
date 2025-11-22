@@ -2,15 +2,14 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { useMemo } from "react";
 import DOMPurify from "dompurify";
 import { API_BASE } from "@/lib/api";
 
 interface SecureEmailViewerProps {
   html: string;
   senderEmail: string;
-  messageId: string; // required for lazy attachment fetching
-  accountEmail: string; // required for attachment API
+  messageId: string;
+  accountEmail: string;
   theme?: "light" | "dark";
   attachments?: { filename: string; mimeType: string; storageUrl?: string }[];
 }
@@ -23,28 +22,23 @@ export default function SecureEmailViewer({
   theme = "light",
   attachments = [],
 }: SecureEmailViewerProps) {
-  // senderEmail is part of the interface but not currently used in rendering
-  // Keeping it for potential future use (e.g., sender verification)
   void senderEmail;
   const hostRef = useRef<HTMLDivElement | null>(null);
   const shadowRootRef = useRef<ShadowRoot | null>(null);
   const [showImages, setShowImages] = useState(true);
   const [hasBlockedImages, setHasBlockedImages] = useState(false);
   const [cidImages, setCidImages] = useState<string[]>([]);
+  const observerRef = useRef<IntersectionObserver | null>(null);
 
-  // attach shadow root once
   useEffect(() => {
     if (hostRef.current && !shadowRootRef.current) {
       shadowRootRef.current = hostRef.current.attachShadow({ mode: "open" });
     }
   }, []);
 
-  // Helper: fetch base64 from backend
   const fetchAttachmentBase64 = useCallback(
     async (cid: string) => {
       try {
-        // We call the attachment endpoint with cid as attId.
-        // Backend should resolve cid -> attachmentId if necessary.
         const url = `${API_BASE}/api/gmail/attachment/${encodeURIComponent(
           messageId
         )}/${encodeURIComponent(cid)}?account=${encodeURIComponent(accountEmail)}`;
@@ -59,7 +53,6 @@ export default function SecureEmailViewer({
         }
 
         const data = await res.json();
-        // Expected { base64: "..." } — or adapt if backend returns differently
         return data.base64 ?? null;
       } catch (err) {
         console.error("fetchAttachmentBase64 error:", err);
@@ -69,284 +62,123 @@ export default function SecureEmailViewer({
     [messageId, accountEmail]
   );
 
-  // Render sanitized HTML and setup lazy loading for cid: images
   useEffect(() => {
     const root = shadowRootRef.current;
     if (!root) return;
 
-    // Extract cid images for thumbnail display
+    // Cleanup previous observer if it exists
+    if (observerRef.current) {
+      observerRef.current.disconnect();
+      observerRef.current = null;
+    }
+
     const foundCids = Array.from(new Set(
       [...(html.match(/cid:([^"' >]+)/gi) || [])].map(x => x.replace(/^cid:/, "").replace(/[<>]/g, ""))
     ));
     setCidImages(foundCids);
 
-    // sanitize HTML, allow img & common attributes
     const cleanHTML = DOMPurify.sanitize(html || "<p>(No content)</p>", {
-      ADD_TAGS: ["iframe", "img"],
-      ADD_ATTR: ["allow", "allowfullscreen", "frameborder", "scrolling", "src", "data-cid"],
+      ADD_TAGS: ["iframe", "img", "style"],
+      ADD_ATTR: [
+        "allow", "allowfullscreen", "frameborder", "scrolling", "src", "data-cid",
+        "width", "height", "align", "valign", "bgcolor", "cellpadding", 
+        "cellspacing", "border", "style", "class", "id"
+      ],
+      ALLOW_UNKNOWN_PROTOCOLS: true,
     });
 
     const processedHTML = showImages ? cleanHTML : cleanHTML.replace(/<img[^>]*>/gi, "");
 
-    // Post-process HTML to remove problematic inline styles that cause overflow
-    const processedHTMLFixed = processedHTML
-      // Remove fixed widths that exceed reasonable limits
-      .replace(/width\s*:\s*(\d+)(px|%)/gi, (match, value, unit) => {
-        const numValue = parseInt(value);
-        if (unit === 'px' && numValue > 800) {
-          return `max-width: 100%`;
-        }
-        return match;
-      })
-      // Ensure all width attributes on elements are constrained
-      .replace(/<(\w+)[^>]*\s+width\s*=\s*["'](\d+)(px|%)?["'][^>]*>/gi, (match, _tag, value) => {
-        const numValue = parseInt(value);
-        if (numValue > 800) {
-          return match.replace(/\s+width\s*=\s*["'][^"']*["']/, '');
-        }
-        return match;
-      });
-
-    // Render into shadow DOM
+    // CLEAR and set innerHTML (not append) to prevent duplicates
     root.innerHTML = `
       <style>
         :host {
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+          all: initial;
           display: block;
-          width: 100% !important;
-          max-width: 100% !important;
-          overflow-x: hidden !important;
         }
-
-        html, body {
-          max-width: 100% !important;
-          overflow-x: hidden !important;
-          margin: 0 !important;
-          padding: 0 !important;
-        }
-
-        * {
-          max-width: 100% !important;
-          box-sizing: border-box !important;
-        }
-
-        /* Email wrapper - no padding, let parent handle it */
-        #email-wrapper {
-          width: 100% !important;
-          max-width: 100% !important;
-          padding: 0 !important;
-          margin: 0 !important;
-          box-sizing: border-box !important;
-          overflow-x: hidden !important;
-          background: transparent !important;
-        }
-
-        /* Email root container */
-        #email-root {
-          width: 100% !important;
-          max-width: 100% !important;
-          padding: 0 !important;
-          margin: 0 !important;
-          overflow-x: hidden !important;
-          box-sizing: border-box !important;
-        }
-
-        /* Universal constraint for all elements */
-        #email-root *,
-        #email-wrapper * {
-          max-width: 100% !important;
-          box-sizing: border-box !important;
-          overflow-wrap: break-word !important;
-          word-wrap: break-word !important;
-        }
-
-        /* Images */
-        #email-root img,
-        img {
-          max-width: 100% !important;
-          width: auto !important;
-          height: auto !important;
-          display: block !important;
-        }
-
-        /* Tables - critical for email templates */
-        #email-root table,
-        table {
-          width: 100% !important;
-          max-width: 100% !important;
-          table-layout: auto !important;
-          border-collapse: collapse !important;
-          word-wrap: break-word !important;
-          overflow-wrap: break-word !important;
-        }
-
-        /* Table cells */
-        #email-root td,
-        #email-root th,
-        td, th {
-          max-width: 100% !important;
-          word-wrap: break-word !important;
-          overflow-wrap: break-word !important;
-          padding: 8px !important;
-        }
-
-        /* Divs and containers */
-        #email-root div,
-        div {
-          max-width: 100% !important;
-          overflow-x: hidden !important;
-          overflow-wrap: break-word !important;
-        }
-
-        /* Paragraphs and text */
-        #email-root p,
-        #email-root span,
-        p, span {
-          max-width: 100% !important;
-          overflow-wrap: break-word !important;
-          word-wrap: break-word !important;
-        }
-
-        /* Pre and code */
-        #email-root pre,
-        #email-root code,
-        pre, code {
-          white-space: pre-wrap !important;
-          word-break: break-word !important;
-          max-width: 100% !important;
-          overflow-x: hidden !important;
-        }
-
-        /* Buttons and form elements */
-        #email-root button,
-        #email-root input,
-        #email-root textarea,
-        #email-root select,
-        button, input, textarea, select {
-          max-width: 100% !important;
-          box-sizing: border-box !important;
-        }
-
-        /* Links */
-        a {
-          color: #2563eb !important;
-          text-decoration: none !important;
-          word-break: break-word !important;
-        }
-        a:hover {
-          text-decoration: underline !important;
-        }
-
-        /* Lazy loading images */
+        
         img.lazy-loading {
-          opacity: 0.45;
-          transition: opacity 240ms ease-in-out;
+          opacity: 0.5;
+          transition: opacity 0.3s;
         }
         img.loaded {
           opacity: 1;
         }
-
-        /* Blockquotes */
-        blockquote {
-          border-left: 3px solid #e5e7eb;
-          margin-left: 0.5rem;
-          padding-left: 0.75rem;
-          color: #374151;
-          max-width: 100% !important;
-        }
-
-        /* Remove any fixed widths that might cause overflow */
-        [style*="width"] {
-          max-width: 100% !important;
-        }
       </style>
-      <div id="email-wrapper">
-        <div id="email-root">${processedHTMLFixed}</div>
-      </div>
+      ${processedHTML}
     `;
 
-    // Determine whether there are images blocked
     if (/<img/i.test(html) && !showImages) setHasBlockedImages(true);
     else setHasBlockedImages(false);
 
     if (!showImages) return;
 
-    const emailRoot = root.querySelector("#email-root") as HTMLElement | null;
-    if (!emailRoot) return;
-
-    // Replace CID images with placeholder & data-cid attribute if any
-    // Note: some images might already be data urls or http(s) urls => leave them
-    const imgs = Array.from(emailRoot.querySelectorAll("img"));
+    const imgs = Array.from(root.querySelectorAll("img"));
     imgs.forEach((img) => {
       const src = img.getAttribute("src") || "";
       if (src.startsWith("cid:")) {
         const cid = src.replace(/^cid:/i, "").replace(/[<>]/g, "");
-        // remove src so browser doesn't try to load invalid url
         img.removeAttribute("src");
         img.setAttribute("data-cid", cid);
         img.classList.add("lazy-loading");
-        // set an accessible alt if none
         if (!img.getAttribute("alt")) img.setAttribute("alt", "inline image");
-        // optionally set a lightweight placeholder tiny transparent image so layout holds
         img.setAttribute(
           "src",
-          "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" // 1x1 transparent gif
+          "image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=="
         );
       } else {
-        // non-cid images: let them load normally but mark for CSS transition when loaded
         img.addEventListener("load", () => {
           img.classList.add("loaded");
         });
       }
     });
 
-    // IntersectionObserver for lazy loading CID images when visible
-    // IntersectionObserver for lazy loading CID images when visible
-const observer = new IntersectionObserver(
-  (entries) => {
-    for (const entry of entries) {
-      if (!entry.isIntersecting) continue;
+    // Create NEW observer each time
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
 
-      const el = entry.target as HTMLImageElement;
-      const cid = el.getAttribute("data-cid");
-      if (!cid) {
-        observer.unobserve(el);
-        continue;
-      }
-
-      (async () => {
-        try {
-          const base64 = await fetchAttachmentBase64(cid);
-          if (base64) {
-            el.src = `data:image/png;base64,${base64}`;
-            el.classList.add("loaded");
-          } else {
-            el.src =
-              "data:image/svg+xml;base64," +
-              btoa(
-                `<svg xmlns='http://www.w3.org/2000/svg' width='40' height='30'><text x='0' y='14' font-size='10' fill='#999'>image</text></svg>`
-              );
-            el.classList.add("loaded");
+          const el = entry.target as HTMLImageElement;
+          const cid = el.getAttribute("data-cid");
+          if (!cid) {
+            observer.unobserve(el);
+            continue;
           }
-        } catch (err) {
-          console.error("CID load error:", err);
-        } finally {
-          observer.unobserve(el);
+
+          (async () => {
+            try {
+              const base64 = await fetchAttachmentBase64(cid);
+              if (base64) {
+                el.src = `image/png;base64,${base64}`;
+                el.classList.add("loaded");
+              } else {
+                el.src =
+                  "image/svg+xml;base64," +
+                  btoa(
+                    `<svg xmlns='http://www.w3.org/2000/svg' width='40' height='30'><text x='0' y='14' font-size='10' fill='#999'>image</text></svg>`
+                  );
+                el.classList.add("loaded");
+              }
+            } catch (err) {
+              console.error("CID load error:", err);
+            } finally {
+              observer.unobserve(el);
+            }
+          })();
         }
-      })();
-    }
-  },
-  {
-    // ❗ FIX: No root here. ShadowRoot is invalid.
-    rootMargin: "200px",
-    threshold: 0.01,
-  }
-);
+      },
+      {
+        rootMargin: "200px",
+        threshold: 0.01,
+      }
+    );
 
-    // observe all cid images
-    emailRoot.querySelectorAll("img[data-cid]").forEach((img) => observer.observe(img));
+    // Store in ref
+    observerRef.current = observer;
 
-    // Link handling: open external links in new tab from shadow root
+    root.querySelectorAll("img[data-cid]").forEach((img) => observer.observe(img));
+
     const linkHandler = (ev: Event) => {
       const t = ev.target as HTMLElement;
       if (t && t.tagName === "A") {
@@ -357,16 +189,18 @@ const observer = new IntersectionObserver(
         if (href.startsWith("mailto:")) (window.location.href = href);
       }
     };
-    emailRoot.addEventListener("click", linkHandler);
+    root.addEventListener("click", linkHandler);
 
-    // cleanup
     return () => {
-      observer.disconnect();
-      emailRoot.removeEventListener("click", linkHandler);
+      // Cleanup on unmount or re-render
+      if (observerRef.current) {
+        observerRef.current.disconnect();
+        observerRef.current = null;
+      }
+      root.removeEventListener("click", linkHandler);
     };
-  }, [html, showImages, fetchAttachmentBase64, messageId, accountEmail]);
+  }, [html, showImages, fetchAttachmentBase64]);
 
-  // basic click handler for links at shadow root level (safety)
   const handleClick = useCallback((e: Event) => {
     const target = e.target as HTMLElement;
     if (target.tagName === "A") {
@@ -386,7 +220,7 @@ const observer = new IntersectionObserver(
   }, [handleClick]);
 
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col w-full">
       {hasBlockedImages && !showImages && (
         <div className="flex items-center justify-between bg-amber-100 border border-amber-300 text-amber-700 text-xs rounded px-3 py-2 mb-3">
           <p>Images are blocked for security.</p>
@@ -401,15 +235,12 @@ const observer = new IntersectionObserver(
 
       <div
         ref={hostRef}
-        className="w-full flex-1 text-sm text-gray-800 leading-relaxed"
+        className="w-full"
         style={{
-          backgroundColor: theme === "dark" ? "#121212" : "transparent",
-          color: theme === "dark" ? "#e5e7eb" : "#111827",
-          overflowX: "hidden",
-          overflowY: "visible",
-          maxWidth: "100%",
+          minHeight: "200px",
         }}
       />
+      
       {cidImages.length > 0 && (
         <div className="mt-4 flex flex-wrap gap-3">
           {cidImages.map((cid) => (
@@ -421,29 +252,6 @@ const observer = new IntersectionObserver(
           ))}
         </div>
       )}
-      {/* {attachments.length > 0 && (
-        <div className="mt-4 flex flex-wrap gap-3">
-          {attachments.map((att) => (
-            <a
-              key={att.filename}
-              href={att.storageUrl || "#"}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="w-16 h-16 flex items-center justify-center bg-gray-100 rounded-md border overflow-hidden text-xs text-gray-600 hover:bg-gray-200 transition"
-            >
-              {att.mimeType?.startsWith("image/") ? (
-                <img
-                  src={att.storageUrl}
-                  alt={att.filename}
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <span className="p-2 text-center break-words">{att.filename}</span>
-              )}
-            </a>
-          ))}
-        </div>
-      )} */}
     </div>
   );
 }
@@ -456,7 +264,7 @@ function ThumbnailLoader({ cid, fetchBase64 }: { cid: string; fetchBase64: (c: s
     (async () => {
       const b64 = await fetchBase64(cid);
       if (!mounted) return;
-      if (b64) setSrc(`data:image/png;base64,${b64}`);
+      if (b64) setSrc(`image/png;base64,${b64}`);
     })();
     return () => {
       mounted = false;
