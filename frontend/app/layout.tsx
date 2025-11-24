@@ -1,7 +1,7 @@
 import "./globals.css";
 
 export const metadata = {
-  title: "Universal Email Aggregator",
+  title: "SigmaMail",
   description: "Multi-account Gmail + Outlook aggregator with AI insights",
 };
 
