@@ -16,6 +16,7 @@ import {
   Send,
   Archive,
   Trash2,
+  RefreshCw,
   Plus,
   Settings,
   LogOut,
@@ -44,7 +45,7 @@ type DashboardMessage = {
   category: string;
   accountEmail: any;
   to: any;
-  attachments: boolean;
+  attachments: { filename: string; mimeType: string; storageUrl?: string }[];
   starred: any;
   id: string;
   _id?: string;
@@ -57,18 +58,38 @@ type DashboardMessage = {
   hidden?: boolean;
   count?: number;
 };
-type DashboardThread = { messages: DashboardMessage[]; threadId?: string };
+type DashboardThread = { messages?: DashboardMessage[]; threadId?: string; account?: string };
 
 export default function Dashboard() {
   const router = useRouter();
 
   // const [labelCounts, setLabelCounts] = useState<any>({});
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  async function handleSyncClick() {
+    try {
+      setIsSyncing(true);
+      const token = localStorage.getItem("token");
+      const res = await fetch("http://localhost:4000/api/debug/run-sync", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (res.ok) {
+        loadToday();
+      }
+    } catch (error) {
+      console.error("Sync failed:", error);
+    } finally {
+      setIsSyncing(false);
+    }
+  }
   const [user, setUser] = useState<DashboardUser | null>(null);
   const [loadingThread, setLoadingThread] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [accounts, setAccounts] = useState<DashboardAccount[]>([]);
   const [currentFolder, setCurrentFolder] = useState("INBOX");
-  const [selectedAccount, setSelectedAccount] = useState<string>("ALL");
+  const [selectedAccount, setSelectedAccount] = useState<string | null>("ALL");
   const [messages, setMessages] = useState<DashboardMessage[]>([]);
   const [nextPageToken, setNextPageToken] = useState<string | null>(null);
   const [selectedMessage, setSelectedMessage] =
@@ -240,67 +261,6 @@ export default function Dashboard() {
   }, [router, loadAccounts]);
 
 
-  // async function loadLabelCounts(account: string) {
-  //   const token = localStorage.getItem("token");
-  
-  //   const res = await fetch(
-  //     `${API_BASE}/api/gmail/labels?account=${encodeURIComponent(account)}`,
-  //     { headers: { Authorization: `Bearer ${token}` } }
-  //   );
-  
-  //   const data = await res.json();
-  //   setLabelCounts(data);
-  // }
-
-  // ✅ Load & group messages by thread (Gmail per-account)
-  async function loadMessages(account: string, label = currentFolder, pageToken?: string) {
-    setLoadingMessages(true);
-  
-    const token = localStorage.getItem("token");
-  
-    try {
-      const res = await fetch(
-        `${API_BASE}/api/gmail/messages?account=${encodeURIComponent(
-          account
-        )}&label=${label}&max=30${pageToken ? `&pageToken=${pageToken}` : ""}`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
-  
-      const data = await res.json();
-      const rawMessages = (Array.isArray(data?.messages)
-        ? data.messages
-        : []) as DashboardMessage[];
-  
-      const grouped: DashboardMessage[] = Object.values(
-        rawMessages.reduce<Record<string, DashboardMessage>>((acc, msg) => {
-          const key = msg.threadId || msg.id;
-          if (!acc[key]) {
-            acc[key] = { ...msg, count: 1 };
-          } else {
-            acc[key].count = (acc[key].count || 0) + 1;
-          }
-          return acc;
-        }, {})
-      );
-  
-      if (pageToken) {
-        // append
-        setMessages((prev) => [...prev, ...grouped]);
-      } else {
-        // first page load
-        setMessages(grouped);
-      }
-  
-      setNextPageToken(data.nextPageToken || null);
-    } catch (err) {
-      console.error("Pagination error:", err);
-    }
-  
-    setLoadingMessages(false);
-  }
-
   function formatDate(dateString?: string) {
     if (!dateString) return "";
     const date = new Date(dateString);
@@ -313,29 +273,29 @@ export default function Dashboard() {
   }
 
 
-    async function openMessage(id: string) {
-      // Always load from DB now for all accounts
-      setLoadingThread(true);
-      try {
-        const token = localStorage.getItem("token");
+  async function openMessage(id: string) {
+    // Always load from DB now for all accounts
+    setLoadingThread(true);
+    try {
+      const token = localStorage.getItem("token");
 
-        // Always load from DB now
-        const res = await fetch(`${API_BASE}/api/db/thread/${id}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+      // Always load from DB now
+      const res = await fetch(`${API_BASE}/api/db/thread/${id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
 
-        if (!res.ok) throw new Error("DB thread fetch failed");
-        const data = await res.json();
+      if (!res.ok) throw new Error("DB thread fetch failed");
+      const data = await res.json();
+      // console.log("this is data",data)
+      setSelectedMessage(data);
+      setSelectedThreadId(data.threadId || id);
 
-        setSelectedMessage(data);
-        setSelectedThreadId(data.threadId || id);
-
-      } catch (err) {
-        console.error("DB thread load error:", err);
-      } finally {
-        setLoadingThread(false);
-      }
+    } catch (err) {
+      console.error("DB thread load error:", err);
+    } finally {
+      setLoadingThread(false);
     }
+  }
 
 
   function connectNewGmail() {
@@ -485,7 +445,7 @@ export default function Dashboard() {
         }, {})
       );
   
-      setMessages(grouped);
+      setMessages(grouped as DashboardMessage[]);
       setNextPageToken(null);
     } catch (err) {
       console.error("Load monthly error:", err);
@@ -528,13 +488,26 @@ export default function Dashboard() {
   
   {/* TOP LOGO */}
   <div className="px-4 pt-4 pb-2">
-    <div className="flex items-center gap-2">
+    <div className="flex items-center justify-between gap-2">
       <div className="w-7 h-7 rounded-md bg-blue-600 text-white flex items-center justify-center font-bold text-sm">
         S
       </div>
       <h1 className="text-lg font-bold tracking-tight text-gray-800">
         SIGMAMAIL
       </h1>
+      <button
+        onClick={handleSyncClick}
+        disabled={isSyncing}
+        className="px-2 py-1 rounded-md border border-gray-300 bg-white hover:bg-gray-100 disabled:opacity-50 flex items-center gap-1"
+      >
+        {isSyncing ? (
+          <span className="animate-spin h-4 w-4 border-2 border-gray-600 border-t-transparent rounded-full"></span>
+        ) : (
+          <>
+            <RefreshCw className="h-4 w-4 cursor-pointer font-semibold" />
+          </>
+        )}
+      </button>
     </div>
   </div>
 
@@ -870,7 +843,7 @@ export default function Dashboard() {
             ))
         )}
 
-        {nextPageToken && selectedAccount && (
+        {/* {nextPageToken && selectedAccount && (
           <button
             onClick={() => {
               const prevThread = selectedThreadId;
@@ -882,7 +855,7 @@ export default function Dashboard() {
           >
             Load more
           </button>
-        )}
+        )} */}
       </>
     )}
   </div>
@@ -951,7 +924,7 @@ export default function Dashboard() {
                 <rect x="75" y="112" width="40" height="6" rx="3" fill="#e9ecef" />
                 <rect x="75" y="124" width="30" height="6" rx="3" fill="#e9ecef" />
               </svg>
-            <div className="text-xl font-semibold mb-2">It's empty here</div>
+            <div className="text-xl font-semibold mb-2">It&apos;s empty here</div>
             <div className="text-sm">Choose an email to view details</div>
           </div>
         )}

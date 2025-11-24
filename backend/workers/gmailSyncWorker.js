@@ -27,7 +27,10 @@ async function syncAccount(account) {
     const gmail = google.gmail({ version: 'v1', auth: authClient });
 
     const list = await gmail.users.messages.list({ userId: 'me', maxResults: 50 });
+    // console.log("this is list",list)
     const msgs = list.data.messages || [];
+    // console.log("this is msgs",msgs)
+
 
     for (const m of msgs) {
       await syncSingleMessage(gmail, m.id, account);

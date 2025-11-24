@@ -1,12 +1,9 @@
 // backend/routes/apiRoutes.js
 import express from "express";
-import { google } from "googleapis";
-import User from "../models/User.js";
 import EmailAccount from "../models/EmailAccount.js";
 import { getAuthorizedClientForAccount } from "../utils/googleClient.js";
 import { requireAuth } from "../middleware/requireAuth.js";
 import { runGmailSyncForUser } from "../workers/gmailSyncWorker.js";
-import { parsePayloadDeep, fixBase64, fetchAttachmentData } from "../utils/emailParser.js";
 import Email from "../models/Email.js";
 import Thread from "../models/Thread.js";
 
@@ -29,67 +26,6 @@ router.get("/accounts", async (req, res) => {
     res.status(500).json({ error: "Failed to load accounts" });
   }
 });
-
-router.get("/gmail/messages", async (req, res) => {
-  try {
-    const accountEmail = req.query.account;
-    const max = Number(req.query.max) || 30;
-    const label = req.query.label || "INBOX";
-    const pageToken = req.query.pageToken || undefined;
-
-    if (!accountEmail)
-      return res.status(400).json({ error: "account query param required" });
-
-    const authClient = await getAuthorizedClientForAccount(
-      accountEmail,
-      req.user.id
-    );
-    const gmail = google.gmail({ version: "v1", auth: authClient });
-
-    // Step 1: Get message metadata (IDs)
-    const listResp = await gmail.users.messages.list({
-      userId: "me",
-      maxResults: max,
-      labelIds: [label],
-      pageToken,
-    });
-
-    const ids = listResp.data.messages || [];
-
-    // Step 2: Fetch full message headers for preview
-    const messages = [];
-    for (const item of ids) {
-      const msg = await gmail.users.messages.get({
-        userId: "me",
-        id: item.id,
-        format: "metadata",
-        metadataHeaders: ["Subject", "From", "Date", "Thread-Id"],
-      });
-
-      const headers = msg.data.payload.headers;
-
-      const find = (name) =>
-        headers.find((h) => h.name === name)?.value || "";
-
-      messages.push({
-        id: msg.data.id,
-        threadId: msg.data.threadId,
-        subject: find("Subject"),
-        from: find("From"),
-        date: find("Date"),
-      });
-    }
-
-    res.json({
-      messages,
-      nextPageToken: listResp.data.nextPageToken || null,
-    });
-  } catch (err) {
-    console.error("Error during pagination fetch:", err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
 
 // DELETE /api/accounts/:email → disconnect Gmail
 router.delete("/accounts/:email", async (req, res) => {
@@ -128,79 +64,6 @@ router.get("/debug/run-sync", async (req, res) => {
   }
 });
 
-router.get("/gmail/messages/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const accountEmail = req.query.account;
-    if (!accountEmail) return res.status(400).json({ error: "account query param required" });
-
-    const authClient = await getAuthorizedClientForAccount(accountEmail, req.user.id);
-    const gmail = google.gmail({ version: "v1", auth: authClient });
-
-    // fetch message (full)
-    const msgResp = await gmail.users.messages.get({ userId: "me", id, format: "full" });
-    const payload = msgResp.data.payload || {};
-
-    const { htmlBody, textBody, inlineParts, attachmentParts } = parsePayloadDeep(payload);
-
-    // 1) Replace inline parts (cid:)
-    let finalHtml = htmlBody || "";
-
-    for (const inline of inlineParts) {
-      let base64Data = inline.data ? fixBase64(inline.data) : null;
-
-      if (!base64Data && inline.attachmentId) {
-        try {
-          base64Data = await fetchAttachmentData(gmail, id, inline.attachmentId);
-        } catch (e) {
-          console.warn("failed to fetch inline attachment", e.message);
-        }
-      }
-
-      if (base64Data) {
-        const dataUrl = `data:${inline.mimeType};base64,${base64Data}`;
-        if (finalHtml) finalHtml = finalHtml.replace(new RegExp(`cid:${inline.cid}`, "g"), dataUrl);
-      }
-    }
-
-    // 2) Append attachment images (real attachments) to HTML bottom
-    for (const att of attachmentParts) {
-      try {
-        const base64 = await fetchAttachmentData(gmail, id, att.attachmentId);
-        if (base64) {
-          finalHtml += `<div style="margin-top:12px;"><img src="data:${att.mimeType};base64,${base64}" style="max-width:100%;border-radius:8px" /></div>`;
-        }
-      } catch (e) {
-        console.warn("failed to fetch attachment", e.message);
-      }
-    }
-
-    // fallback if no HTML
-    const body = finalHtml || (textBody ? `<pre>${textBody}</pre>` : "(No content)");
-
-    // headers
-    const headers = payload.headers || [];
-    const findHeader = (name) => headers.find((h) => h.name.toLowerCase() === name.toLowerCase())?.value || "";
-
-    const messageOut = {
-      id,
-      threadId: msgResp.data.threadId,
-      subject: findHeader("Subject") || "(No Subject)",
-      from: findHeader("From") || "Unknown",
-      to: findHeader("To") || "",
-      replyTo: findHeader("Reply-To") || "",
-      date: findHeader("Date") || "",
-      body,
-      account: accountEmail,
-    };
-
-    res.json(messageOut);
-  } catch (err) {
-    console.error("Error in /gmail/messages/:id", err);
-    res.status(500).json({ error: err.message || "Failed to fetch message" });
-  }
-});
-
 // ----------------------------
 // DB-backed endpoints (Emails + Threads + time-window inboxes)
 // ----------------------------
@@ -210,6 +73,7 @@ router.get("/gmail/messages/:id", async (req, res) => {
 router.get('/db/thread/:id', async (req, res) => {
   try {
     const { id } = req.params;
+    // console.log("this is id:",id);
     const userId = req.user.id;
 
     // Try find thread by threadId first
@@ -220,6 +84,7 @@ router.get('/db/thread/:id', async (req, res) => {
       const maybeEmail = await Email.findOne({ _id: id, userId }).lean();
       if (maybeEmail && maybeEmail.threadId) {
         thread = await Thread.findOne({ threadId: maybeEmail.threadId, userId }).lean();
+        // console.log("this is thread from mongodbid",thread);
       }
     }
 
@@ -235,6 +100,7 @@ router.get('/db/thread/:id', async (req, res) => {
 
     // If we found a thread doc, populate messages
     const messages = await Email.find({ threadId: thread.threadId, userId }).sort({ date: 1 }).lean();
+    // console.log("this is msgs : ",messages)
 
     res.json({ threadId: thread.threadId, messages });
   } catch (err) {

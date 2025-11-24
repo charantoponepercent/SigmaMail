@@ -58,7 +58,13 @@ function getAvatarInitial(fromField?: string): string {
 }
 
 export default function ThreadViewer({ thread, onClose, onPrev, onNext }: ThreadViewerProps) {
-  const [preview, setPreview] = useState(null);
+  type Attachment = {
+    filename: string;
+    mimeType: string;
+    storageUrl?: string;
+  };
+  
+  const [preview, setPreview] = useState<Attachment | null>(null);
   const [openMessage, setOpenMessage] = useState<number | null>(null);
   const toggleMessage = (index: number) => {
     setOpenMessage(prev => (prev === index ? null : index));
@@ -220,8 +226,8 @@ export default function ThreadViewer({ thread, onClose, onPrev, onNext }: Thread
 
                         <SecureEmailViewer
                           html={clean}
-                          senderEmail={msg.from}
-                          messageId={msg.id}
+                          senderEmail={msg.from || ""}
+                          messageId={msg.id || ""}
                           accountEmail={accountEmail}
                           attachments={msg.attachments}
                         />
