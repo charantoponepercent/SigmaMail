@@ -9,24 +9,38 @@ import extractQuotedSections from "@/lib/extractQuotedSections";
 import AttachmentPreviewModal from "@/components/AttachmentPreviewModal";
 import { useState } from "react";
 
+interface ThreadAttachment {
+  filename: string;
+  mimeType: string;
+  storageUrl?: string;
+  messageId?: string;
+  emailId?: string;
+  isExternal?: boolean;
+  provider?: string;
+}
+
+interface ThreadEmail {
+  attachments: { filename: string; mimeType: string; storageUrl?: string; isExternal?: boolean; provider?: string }[];
+  _id?: string;
+  messageId?: string;
+  id?: string;
+  date?: string;
+  from?: string;
+  to?: string;
+  subject?: string;
+  body?: string;
+  htmlBodyProcessed?: string;
+  htmlBodyRaw?: string;
+  textBody?: string;
+  account?: string;
+}
+
 interface ThreadViewerProps {
   thread: {
-    messages?: Array<{
-      attachments: { filename: string; mimeType: string; storageUrl?: string | undefined; }[] | undefined;
-      _id?: string;
-      messageId?: string;
-      id?: string;
-      date?: string;
-      from?: string;
-      to?: string;
-      subject?: string;
-      body?: string;
-      htmlBodyProcessed?: string;
-      htmlBodyRaw?: string;
-      textBody?: string;
-      account?: string;
-    }>;
+    messages?: ThreadEmail[];
+    attachments?: ThreadAttachment[];
     account?: string;
+    threadId?: string;
   };
   onClose: () => void;
   onPrev: () => void;
@@ -62,15 +76,74 @@ export default function ThreadViewer({ thread, onClose, onPrev, onNext }: Thread
     filename: string;
     mimeType: string;
     storageUrl?: string;
+    isExternal?: boolean;
+    provider?: string;
   };
   
   const [preview, setPreview] = useState<Attachment | null>(null);
   const [openMessage, setOpenMessage] = useState<number | null>(null);
+  const [attachmentsOpen, setAttachmentsOpen] = useState(true);
+  const [activeTab, setActiveTab] = useState<"images" | "docs" | "others">("images");
   const toggleMessage = (index: number) => {
     setOpenMessage(prev => (prev === index ? null : index));
   };
 
   if (!thread?.messages?.length) return null;
+
+  // 🔥 Deduplicate attachments by URL or filename (global thread-level dedupe)
+  const rawThreadAttachments: ThreadAttachment[] = thread.attachments || [];
+
+  const threadAttachmentsMap = new Map();
+  rawThreadAttachments.forEach(att => {
+    const key = att.storageUrl || att.filename;
+    if (!threadAttachmentsMap.has(key)) {
+      threadAttachmentsMap.set(key, att);
+    }
+  });
+  const threadAttachments: ThreadAttachment[] = Array.from(threadAttachmentsMap.values());
+  const hasThreadAttachments = threadAttachments.length > 0;
+
+  // Filter images but exclude inline Gmail-referenced images with no useful URL
+  const imageAttachments = threadAttachments.filter((att) =>
+    att.mimeType?.startsWith("image/") &&
+    att.storageUrl &&
+    !att.storageUrl.includes("data:image")
+  );
+
+  const docAttachments = threadAttachments.filter((att) => {
+    const mt = att.mimeType || "";
+    return (
+      mt.includes("pdf") ||
+      mt.includes("word") ||
+      mt.includes("officedocument") ||
+      mt.includes("sheet") ||
+      mt.includes("excel") ||
+      mt.includes("presentation") ||
+      mt.includes("powerpoint") ||
+      mt.includes("text")
+    );
+  });
+
+  const otherAttachments = threadAttachments.filter(
+    (att) =>
+      !imageAttachments.includes(att) && !docAttachments.includes(att)
+  );
+
+  // 🚫 Prevent duplicates leaking into visible category listings
+  const visibleAttachments = Array.from(
+    new Map(
+      (
+        activeTab === "images"
+          ? imageAttachments
+          : activeTab === "docs"
+          ? docAttachments
+          : otherAttachments
+      ).map(a => [
+        (a.storageUrl || "") + "-" + (a.filename || ""),
+        a
+      ])
+    ).values()
+  );
 
   const sorted = [...thread.messages].sort(
     (a, b) => (a.date ? new Date(a.date).getTime() : 0) - (b.date ? new Date(b.date).getTime() : 0)
@@ -83,7 +156,8 @@ export default function ThreadViewer({ thread, onClose, onPrev, onNext }: Thread
   return (
     <div className="flex flex-col h-full overflow-hidden bg-white">
       {/* TOP ACTION BAR — Zero‑style */}
-      <div className="flex items-center justify-between px-3 py-1 bg-white sticky top-0 z-40">
+      <div className="flex items-center px-3 py-1 bg-white sticky top-0 z-40">
+        {/* LEFT: action buttons */}
         <div className="flex border rounded-xl p-1 items-center gap-2">
           <button onClick={onClose} className="p-2 cursor-pointer hover:bg-gray-100 rounded-md">
             <X className="w-4 h-4" />
@@ -95,7 +169,29 @@ export default function ThreadViewer({ thread, onClose, onPrev, onNext }: Thread
             <ChevronRight className="w-4 h-4" />
           </button>
         </div>
-      </div>
+
+
+        {/* RIGHT: collapsible attachments trigger */}
+        {hasThreadAttachments && (
+          <div className="w-1/3 ml-3 flex">
+            <button
+              type="button"
+              onClick={() => setAttachmentsOpen((prev) => !prev)}
+              className="text-md cursor-pointer  text-gray-700 border border-gray-200 rounded-xl py-3 hover:bg-gray-100 flex items-center justify-between px-3 transition-colors"
+            >
+              <span>Attachments ({threadAttachments.length})</span>
+              <span
+                className={`text-xs transform transition-transform duration-200 ${
+                  attachmentsOpen ? "rotate-90" : ""
+                }`}
+              >
+                
+              </span>
+            </button>
+          </div>
+        )}
+        </div>
+
 
       {/* SUBJECT BAR */}
       <div className="px-4 py-4 bg-white shadow-sm">
@@ -131,10 +227,120 @@ export default function ThreadViewer({ thread, onClose, onPrev, onNext }: Thread
         </div>
       </div>
 
+      {/* THREAD-LEVEL ATTACHMENTS BAR (collapsible, grouped) */}
+      {hasThreadAttachments && (
+        <div className="border-b border-gray-200 p-1 rounded-xlml bg-gray-50">
+          {attachmentsOpen && (
+            <div className="px-4 pb-3 pt-1">
+              {/* Tabs: Images / Docs / Others */}
+              <div className="flex items-center gap-2 mb-2 text-[11px]">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("images")}
+                  className={`px-2 py-1 rounded-full border text-xs transition-colors ${
+                    activeTab === "images"
+                      ? "bg-white border-gray-300 text-gray-900"
+                      : "bg-gray-100 border-transparent text-gray-500 hover:bg-gray-200"
+                  }`}
+                >
+                  Images ({imageAttachments.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("docs")}
+                  className={`px-2 py-1 rounded-full border text-xs transition-colors ${
+                    activeTab === "docs"
+                      ? "bg-white border-gray-300 text-gray-900"
+                      : "bg-gray-100 border-transparent text-gray-500 hover:bg-gray-200"
+                  }`}
+                >
+                  Docs ({docAttachments.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("others")}
+                  className={`px-2 py-1 rounded-full border text-xs transition-colors ${
+                    activeTab === "others"
+                      ? "bg-white border-gray-300 text-gray-900"
+                      : "bg-gray-100 border-transparent text-gray-500 hover:bg-gray-200"
+                  }`}
+                >
+                  Others ({otherAttachments.length})
+                </button>
+              </div>
+
+              {/* Horizontal scroll attachments list */}
+              <div className="flex flex-nowrap gap-4 overflow-x-auto pb-1">
+                {visibleAttachments.length === 0 ? (
+                  <p className="text-[11px] text-gray-400 py-2">
+                    No files in this category.
+                  </p>
+                ) : (
+                  visibleAttachments.map((att, idx) => {
+                    const isImage = att.mimeType?.startsWith("image/");
+                    return (
+                      <div
+                        key={idx}
+                        className="min-w-[160px] max-w-[180px] bg-white border border-gray-200 rounded-md shadow-sm cursor-pointer hover:shadow-md transition-shadow flex-shrink-0"
+                        onClick={() =>
+                          setPreview({
+                            filename: att.filename,
+                            mimeType: att.mimeType,
+                            storageUrl: att.storageUrl,
+                          })
+                        }
+                      >
+                        {isImage ? (
+                          <img
+                            src={att.storageUrl}
+                            alt={att.filename}
+                            className="w-full h-28 object-cover rounded-t-md bg-gray-100"
+                          />
+                        ) : (
+                          <div className="w-full h-28 flex items-center justify-center bg-gray-100 rounded-t-md text-xs text-gray-600">
+                            {att.mimeType?.split("/")[1]?.toUpperCase() || "FILE"}
+                          </div>
+                        )}
+                        <div className="px-2 py-2">
+                          <div className="flex items-center justify-between gap-1">
+                            <p className="text-[11px] font-medium text-gray-800 truncate">
+                              {att.filename}
+                            </p>
+                            {att.isExternal && (
+                              <span className="ml-1 text-[10px] text-blue-500 whitespace-nowrap">
+                                &#x2601;&#x20dd;
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[10px] text-gray-400 truncate">
+                            {att.mimeType || "Unknown"}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* BODY */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden">
         <div className="max-w-3xl mx-auto py-6 space-y-12 w-full">
           {sorted.map((msg, idx) => {
+            // Deduplicate attachments for this message
+            const uniqueMsgAttachments = Array.from(
+              new Map(
+                (msg.attachments || []).map(a => [
+                  (a.storageUrl || "") + "-" + (a.filename || ""),
+                  a
+                ])
+              ).values()
+            );
+            msg.attachments = uniqueMsgAttachments;
+
             const body =
               msg.body ||
               msg.htmlBodyProcessed ||
@@ -193,7 +399,9 @@ export default function ThreadViewer({ thread, onClose, onPrev, onNext }: Thread
                       <div className="prose max-w-none w-full">
                         {msg.attachments && msg.attachments.length > 0 && (
                           <div className="mb-6 flex flex-wrap gap-4">
-                            {msg.attachments.map((att, i) => {
+                            {Array.from(new Map(
+                              (msg.attachments || []).map(a => [(a.storageUrl || a.filename), a])
+                            ).values()).map((att, i) => {
                               const isImage = att.mimeType?.startsWith("image/");
                               return (
                                 <div
@@ -218,6 +426,9 @@ export default function ThreadViewer({ thread, onClose, onPrev, onNext }: Thread
                                   <p className="text-xs mt-2 font-medium text-gray-800 truncate">
                                     {att.filename}
                                   </p>
+                                  {att.isExternal && (
+                                    <p className="text-[10px] text-blue-500 mt-0.5">Cloud link</p>
+                                  )}
                                 </div>
                               );
                             })}

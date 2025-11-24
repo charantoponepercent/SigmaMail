@@ -37,6 +37,13 @@ import { EllipsisVertical } from "lucide-react";
 
 type DashboardUser = { id: string; name: string };
 type DashboardAccount = { _id: string; email: string };
+type ThreadAttachment = {
+  filename: string;
+  mimeType: string;
+  storageUrl?: string;
+  messageId?: string;
+  emailId?: string;
+};
 type DashboardMessage = {
   priority: any;
   billDue: any;
@@ -46,6 +53,7 @@ type DashboardMessage = {
   accountEmail: any;
   to: any;
   attachments: { filename: string; mimeType: string; storageUrl?: string }[];
+  threadAttachmentCount?: number;
   starred: any;
   id: string;
   _id?: string;
@@ -58,7 +66,15 @@ type DashboardMessage = {
   hidden?: boolean;
   count?: number;
 };
-type DashboardThread = { messages?: DashboardMessage[]; threadId?: string; account?: string };
+
+
+type DashboardThread = {
+  messages?: DashboardMessage[];
+  threadId?: string;
+  account?: string;
+  attachments?: ThreadAttachment[];
+  threadAttachmentCount?: number;
+};
 
 export default function Dashboard() {
   const router = useRouter();
@@ -173,6 +189,10 @@ export default function Dashboard() {
         return acc;
       }, {})
     ) as DashboardMessage[];
+    // threadAttachmentCount will be fetched from /db/thread/:id
+    grouped.forEach((t: any) => {
+      delete t.threadAttachmentCount;
+    });
     setMessages(grouped);
     setNextPageToken(null);
   }
@@ -208,6 +228,10 @@ export default function Dashboard() {
         return acc;
       }, {})
     ) as DashboardMessage[];
+    // threadAttachmentCount will be fetched from /db/thread/:id
+    grouped.forEach((t: any) => {
+      delete t.threadAttachmentCount;
+    });
     setMessages(grouped);
     setNextPageToken(null);
   }
@@ -243,6 +267,10 @@ export default function Dashboard() {
         return acc;
       }, {})
     ) as DashboardMessage[];
+    // threadAttachmentCount will be fetched from /db/thread/:id
+    grouped.forEach((t: any) => {
+      delete t.threadAttachmentCount;
+    });
     setMessages(grouped);
     setNextPageToken(null);
   }
@@ -444,7 +472,10 @@ export default function Dashboard() {
           return acc;
         }, {})
       );
-  
+      // threadAttachmentCount will be fetched from /db/thread/:id
+      grouped.forEach((t: any) => {
+        delete t.threadAttachmentCount;
+      });
       setMessages(grouped as DashboardMessage[]);
       setNextPageToken(null);
     } catch (err) {
@@ -755,27 +786,32 @@ export default function Dashboard() {
                 {/* Content */}
                 <div className="flex-1 truncate min-w-0">
                   {/* Top Row: Sender, Badge, Date */}
-                  <div className="flex items-center justify-between gap-2 mb-1">
-                    <div className="flex items-center gap-2 min-w-0 flex-1">
-                      <h3 className="text-[14px] font-semibold text-gray-900 truncate">
-                        {msg.from?.split("<")[0].trim() || "Unknown Sender"}
-                      </h3>
-                      {/* Priority or Bill Due badge */}
-                      {msg.priority && (
-                        <span className="px-2 py-0.5 text-[10px] font-medium text-purple-700 bg-purple-100 rounded-full flex-shrink-0">
-                          Priority
-                        </span>
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <h3 className="text-[14px] font-semibold text-gray-900 truncate">
+                          {msg.from?.split("<")[0].trim() || "Unknown Sender"}
+                        </h3>
+                        {/* Priority or Bill Due badge */}
+                        {msg.priority && (
+                          <span className="px-2 py-0.5 text-[10px] font-medium text-purple-700 bg-purple-100 rounded-full flex-shrink-0">
+                            Priority
+                          </span>
+                        )}
+                        {msg.billDue && (
+                          <span className="px-2 py-0.5 text-[10px] font-medium text-orange-700 bg-orange-100 rounded-full flex-shrink-0">
+                            Bill Due
+                          </span>
+                        )}
+                      </div>
+                      {(msg.threadAttachmentCount ?? 0) > 0 && (
+                        <div className="flex items-center gap-1 px-2 py-0.5 bg-gray-50 border border-gray-300 text-gray-700 rounded-full shadow-sm text-[11px] font-medium mr-2">
+                          📎 {msg.threadAttachmentCount}
+                        </div>
                       )}
-                      {msg.billDue && (
-                        <span className="px-2 py-0.5 text-[10px] font-medium text-orange-700 bg-orange-100 rounded-full flex-shrink-0">
-                          Bill Due
-                        </span>
-                      )}
+                      <span className="text-xs text-gray-500 whitespace-nowrap flex-shrink-0">
+                        {formatDate(msg.date)}
+                      </span>
                     </div>
-                    <span className="text-xs text-gray-500 whitespace-nowrap flex-shrink-0">
-                      {formatDate(msg.date)}
-                    </span>
-                  </div>
 
                   {/* Subject */}
                   <p className="text-[12px] font-medium text-gray-500 truncate mb-1">
@@ -807,29 +843,6 @@ export default function Dashboard() {
                       </span>
                     </div>
 
-                    {/* Attachment indicator */}
-                    {Array.isArray(msg.attachments) && msg.attachments.length > 0 && (
-                      <div className="flex items-center gap-1 text-xs text-gray-500">
-                        <span className="w-1 h-1 rounded-full bg-gray-400"></span>
-                        <svg
-                          className="w-3.5 h-3.5 text-purple-700"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
-                          />
-                        </svg>
-                        <span className="text-purple-400">
-                          {msg.attachments.length} attachment
-                          {msg.attachments.length > 1 ? "s" : ""}
-                        </span>
-                      </div>
-                    )}
 
                     {/* Star icon (if starred) */}
                     {msg.starred && (

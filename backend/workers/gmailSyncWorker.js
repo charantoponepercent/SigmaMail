@@ -41,8 +41,8 @@ async function syncAccount(account) {
 }
 
 async function syncSingleMessage(gmail, messageId, account) {
-  const exists = await Email.findOne({ messageId, accountId: account._id });
-  if (exists) return; // avoid duplicates
+  // Use upsert to avoid duplicates in race conditions
+  const emailFilter = { messageId, accountId: account._id };
 
   const full = await gmail.users.messages.get({ userId: 'me', id: messageId, format: 'full' });
   const payload = full.data.payload || {};
@@ -211,36 +211,117 @@ async function syncSingleMessage(gmail, messageId, account) {
   }
 
   // -------------------------------------------------------
+  // DETECT EXTERNAL CLOUD ATTACHMENTS
+  // -------------------------------------------------------
+
+  const externalAttachments = [];
+
+  const detectProvider = (url) => {
+    if (/drive\.google\.com/.test(url)) return "drive";
+    if (/dropbox\.com/.test(url)) return "dropbox";
+    if (/onedrive\.live\.com/.test(url) || /1drv\.ms/.test(url)) return "onedrive";
+    if (/icloud\.com/.test(url)) return "icloud";
+    return "external";
+  };
+
+  const extractExternalLinks = (html, text) => {
+    const results = [];
+    const guessFilename = (url) => {
+      try {
+        const decoded = decodeURIComponent(url.split("?")[0]);
+        const name = decoded.split("/").filter(Boolean).pop() || "document";
+        if (!name.includes(".")) return name + ".pdf"; // Common case: Drive PDFs drop extension
+        return name;
+      } catch {
+        return "file.pdf";
+      }
+    };
+    const seen = new Set();
+
+    const collect = (url) => {
+      if (seen.has(url)) return;
+      seen.add(url);
+      const provider = detectProvider(url);
+      const filename = guessFilename(url);
+      results.push({
+        filename,
+        mimeType: "application/octet-stream",
+        size: 0,
+        storageUrl: url,
+        isExternal: true,
+        provider,
+      });
+    };
+
+    const anchorRegex = /<a[^>]+href=["'](https?:\/\/(?:drive\.google\.com|dropbox\.com|onedrive\.live\.com|1drv\.ms|icloud\.com)[^"']*)["'][^>]*>/gi;
+    let match;
+    while ((match = anchorRegex.exec(html)) !== null) collect(match[1]);
+
+    const bracketRegex = /<https?:\/\/(?:drive\.google\.com|dropbox\.com|onedrive\.live\.com|1drv\.ms|icloud\.com)[^>\s]*>/gi;
+    while ((match = bracketRegex.exec(text)) !== null) {
+      const bracketUrl = match[0].slice(1, -1); // remove < >
+      collect(bracketUrl);
+    }
+
+    const urlRegex = /(https?:\/\/(?:drive\.google\.com|dropbox\.com|onedrive\.live\.com|1drv\.ms|icloud\.com)[^\s<>"']*)/gi;
+    while ((match = urlRegex.exec(text)) !== null) collect(match[1]);
+
+    return results;
+  };
+
+  const cloudLinks = extractExternalLinks(finalHtml || "", textBody || "");
+  if (cloudLinks.length > 0) externalAttachments.push(...cloudLinks);
+  uploadedAttachments.push(...externalAttachments);
+
+  // 🔥 Remove duplicate attachments (same URL or same filename)
+  const seenKeys = new Set();
+  const deduped = [];
+
+  for (const att of uploadedAttachments) {
+    const key = att.storageUrl || att.filename;
+    if (seenKeys.has(key)) continue;
+    seenKeys.add(key);
+    deduped.push(att);
+  }
+
+  uploadedAttachments.length = 0;
+  uploadedAttachments.push(...deduped);
+
+  // -------------------------------------------------------
   // STORE EMAIL IN MONGODB
   // -------------------------------------------------------
-  const emailDoc = await Email.create({
-    userId: account.userId,
-    accountId: account._id,
-    messageId,
-    threadId: full.data.threadId,
+  const emailDoc = await Email.findOneAndUpdate(
+    emailFilter,
+    {
+      userId: account.userId,
+      accountId: account._id,
+      messageId,
+      threadId: full.data.threadId,
 
-    subject: find('Subject'),
-    from: find('From'),
-    to: find('To'),
-    date: new Date(find('Date')),
+      subject: find('Subject'),
+      from: find('From'),
+      to: find('To'),
+      date: new Date(find('Date')),
 
-    textBody,
-    htmlBodyRaw: htmlBody,
-    htmlBodyProcessed: finalHtml,
-    body: composedBody,
+      textBody,
+      htmlBodyRaw: htmlBody,
+      htmlBodyProcessed: finalHtml,
+      body: composedBody,
 
-    inlineImages: inlineParts.map((i) => ({
-      cid: i.cid,
-      mimeType: i.mimeType,
-    })),
+      inlineImages: inlineParts.map((i) => ({
+        cid: i.cid,
+        mimeType: i.mimeType,
+      })),
 
-    attachments: uploadedAttachments,    // <-- IMPORTANT
-    hasAttachments: uploadedAttachments.length > 0,
+      attachments: uploadedAttachments,
+      hasAttachments: uploadedAttachments.length > 0,
 
-    labelIds: full.data.labelIds || [],
-    snippet: full.data.snippet || '',
-    hasInlineImages: inlineParts.length > 0,
-  });
+      labelIds: full.data.labelIds || [],
+      snippet: full.data.snippet || '',
+      hasInlineImages: inlineParts.length > 0,
+    },
+    { upsert: true, new: true }
+  );
 
   await updateThread(account, emailDoc);
 }

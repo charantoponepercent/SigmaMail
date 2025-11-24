@@ -70,42 +70,104 @@ router.get("/debug/run-sync", async (req, res) => {
 
 
 // GET /api/db/thread/:id -> thread by threadId or by DB _id (fallback)
-router.get('/db/thread/:id', async (req, res) => {
+// router.get('/db/thread/:id', async (req, res) => {
+//   try {
+//     const { id } = req.params;
+//     // console.log("this is id:",id);
+//     const userId = req.user.id;
+
+//     // Try find thread by threadId first
+//     let thread = await Thread.findOne({ threadId: id, userId }).lean();
+
+//     // If not found, maybe caller passed a message DB id — find the email and use its threadId
+//     if (!thread) {
+//       const maybeEmail = await Email.findOne({ _id: id, userId }).lean();
+//       if (maybeEmail && maybeEmail.threadId) {
+//         thread = await Thread.findOne({ threadId: maybeEmail.threadId, userId }).lean();
+//         // console.log("this is thread from mongodbid",thread);
+//       }
+//     }
+
+//     // If still no thread, try to build a thread from emails that share the same threadId
+//     if (!thread) {
+//       // try to find emails that match the id as a threadId
+//       const messages = await Email.find({ threadId: id, userId }).sort({ date: 1 }).lean();
+//       if (messages.length > 0) {
+//         return res.json({ threadId: id, messages });
+//       }
+//       return res.status(404).json({ error: 'Thread not found' });
+//     }
+
+//     // If we found a thread doc, populate messages
+//     const messages = await Email.find({ threadId: thread.threadId, userId }).sort({ date: 1 }).lean();
+//     // console.log("this is msgs : ",messages)
+
+//     res.json({ threadId: thread.threadId, messages });
+//   } catch (err) {
+//     console.error('DB thread fetch error:', err);
+//     res.status(500).json({ error: 'Failed to fetch thread from DB' });
+//   }
+// });
+
+router.get("/db/thread/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    // console.log("this is id:",id);
     const userId = req.user.id;
 
-    // Try find thread by threadId first
+    // Try direct Thread lookup
     let thread = await Thread.findOne({ threadId: id, userId }).lean();
 
-    // If not found, maybe caller passed a message DB id — find the email and use its threadId
+    // If not found, maybe `id` is an Email _id instead of threadId
     if (!thread) {
       const maybeEmail = await Email.findOne({ _id: id, userId }).lean();
-      if (maybeEmail && maybeEmail.threadId) {
-        thread = await Thread.findOne({ threadId: maybeEmail.threadId, userId }).lean();
-        // console.log("this is thread from mongodbid",thread);
+      if (maybeEmail?.threadId) {
+        thread = await Thread.findOne({
+          threadId: maybeEmail.threadId,
+          userId,
+        }).lean();
       }
     }
 
-    // If still no thread, try to build a thread from emails that share the same threadId
+    // Helper to build consistent response format
+    const buildResponse = (threadId, messages) => {
+      const attachments = messages.flatMap((msg) =>
+        (msg.attachments || []).map((a) => ({
+          filename: a.filename,
+          mimeType: a.mimeType,
+          storageUrl: a.storageUrl,
+          messageId: msg.messageId,
+          emailId: msg._id,
+        }))
+      );
+
+      return { threadId, attachments, messages };
+    };
+
+    // Case: Still no thread doc → fallback to Emails only
     if (!thread) {
-      // try to find emails that match the id as a threadId
-      const messages = await Email.find({ threadId: id, userId }).sort({ date: 1 }).lean();
+      const messages = await Email.find({ threadId: id, userId })
+        .sort({ date: 1 })
+        .lean();
+
       if (messages.length > 0) {
-        return res.json({ threadId: id, messages });
+        return res.json(buildResponse(id, messages));
       }
-      return res.status(404).json({ error: 'Thread not found' });
+
+      return res.status(404).json({ error: "Thread not found" });
     }
 
-    // If we found a thread doc, populate messages
-    const messages = await Email.find({ threadId: thread.threadId, userId }).sort({ date: 1 }).lean();
-    // console.log("this is msgs : ",messages)
+    // Normal case: thread exists → load related emails
+    const messages = await Email.find({
+      threadId: thread.threadId,
+      userId,
+    })
+      .sort({ date: 1 })
+      .lean();
 
-    res.json({ threadId: thread.threadId, messages });
+    return res.json(buildResponse(thread.threadId, messages));
   } catch (err) {
-    console.error('DB thread fetch error:', err);
-    res.status(500).json({ error: 'Failed to fetch thread from DB' });
+    console.error("DB thread fetch error:", err);
+    return res.status(500).json({ error: "Failed to fetch thread from DB" });
   }
 });
 

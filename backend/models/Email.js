@@ -42,6 +42,8 @@ const EmailSchema = new mongoose.Schema(
     isRead: { type: Boolean, default: false },
     hasInlineImages: { type: Boolean, default: false },
     hasAttachments: { type: Boolean, default: false },
+    isExternal: { type: Boolean, default: false },
+    provider: { type: String },
   },
   { timestamps: true }
 );
