@@ -2,7 +2,7 @@
 "use client";
 
 import React from "react";
-import { X, ChevronLeft, ChevronRight } from "lucide-react";
+import { X, ChevronLeft, ChevronRight, ChevronDown, ChevronRight as ChevronRightIcon } from "lucide-react";
 import { format } from "date-fns";
 import SecureEmailViewer from "@/components/SecureEmailViewer";
 import extractQuotedSections from "@/lib/extractQuotedSections";
@@ -82,7 +82,7 @@ export default function ThreadViewer({ thread, onClose, onPrev, onNext }: Thread
   
   const [preview, setPreview] = useState<Attachment | null>(null);
   const [openMessage, setOpenMessage] = useState<number | null>(null);
-  const [attachmentsOpen, setAttachmentsOpen] = useState(true);
+  const [attachmentsOpen, setAttachmentsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"images" | "docs" | "others">("images");
   const toggleMessage = (index: number) => {
     setOpenMessage(prev => (prev === index ? null : index));
@@ -177,16 +177,14 @@ export default function ThreadViewer({ thread, onClose, onPrev, onNext }: Thread
             <button
               type="button"
               onClick={() => setAttachmentsOpen((prev) => !prev)}
-              className="text-md cursor-pointer  text-gray-700 border border-gray-200 rounded-xl py-3 hover:bg-gray-100 flex items-center justify-between px-3 transition-colors"
+              className="text-md cursor-pointer text-gray-700 border border-gray-200 rounded-xl py-3 hover:bg-gray-100 flex items-center justify-between px-3 transition-colors"
             >
               <span>Attachments ({threadAttachments.length})</span>
-              <span
-                className={`text-xs transform transition-transform duration-200 ${
-                  attachmentsOpen ? "rotate-90" : ""
+              <ChevronRightIcon
+                className={`w-3 h-3 ml-2 transition-transform duration-200 ${
+                  attachmentsOpen ? "rotate-90" : "rotate-0"
                 }`}
-              >
-                
-              </span>
+              />
             </button>
           </div>
         )}

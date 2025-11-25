@@ -21,6 +21,7 @@ import {
   Settings,
   LogOut,
   Loader2,
+  Paperclip,
 } from "lucide-react";
 
 import {
@@ -843,6 +844,12 @@ export default function Dashboard() {
                       </span>
                     </div>
 
+
+                    {(msg.attachments?.length ?? 0) > 0 && (
+                      <div className="p-1.5 rounded-full bg-purple-100 flex items-center justify-center">
+                        <Paperclip className="w-3 h-3 text-purple-600" />
+                      </div>
+                    )}
 
                     {/* Star icon (if starred) */}
                     {msg.starred && (
