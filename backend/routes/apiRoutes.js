@@ -6,6 +6,8 @@ import { requireAuth } from "../middleware/requireAuth.js";
 import { runGmailSyncForUser } from "../workers/gmailSyncWorker.js";
 import Email from "../models/Email.js";
 import Thread from "../models/Thread.js";
+import { GoogleGenerativeAI } from "@google/generative-ai";
+import Redis from "ioredis";
 
 const router = express.Router();
 
@@ -265,6 +267,101 @@ router.get("/inbox/monthly", async (req, res) => {
   } catch (err) {
     console.error("Error loading monthly inbox:", err);
     res.status(500).json({ error: "Failed to load monthly inbox" });
+  }
+});
+
+/* ---------------------------------------------------------
+   POST /api/ai/summarize-thread
+   Summarizes a thread using Gemini 2.0 Flash with caching
+--------------------------------------------------------- */
+const redis = new Redis(process.env.REDIS_URL);
+
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+
+router.post("/ai/summarize-thread", async (req, res) => {
+  try {
+    const { threadId, messages } = req.body;
+
+    if (!threadId || !messages) {
+      return res.status(400).json({ error: "threadId and messages are required" });
+    }
+
+    const cacheKey = `thread_summary:${threadId}`;
+    const cached = await redis.get(cacheKey);
+
+    if (cached) {
+      return res.json(JSON.parse(cached));
+    }
+
+    // Clean and trim messages to avoid oversized payloads
+    const cleanedMessages = messages
+      .map(m => {
+        const raw = (m.textBody || m.body || "").replace(/<[^>]*>?/gm, "");
+        const trimmed = raw.slice(0, 1500); // limit to 1500 chars per email
+        return `From: ${m.from}\n${trimmed}`;
+      })
+      .join("\n\n---\n\n");
+
+    const prompt = `
+You are an email summarization engine. Summarize the following email thread.
+
+Thread:
+${cleanedMessages}
+
+Return ONLY valid JSON (no markdown, no explanations, no backticks).
+
+The JSON MUST follow this exact schema:
+
+{
+  "quick": [
+    "First key bullet point here",
+    "Second key bullet point here",
+    "Third key bullet point here"
+  ],
+  "actions": [
+    "Action item 1",
+    "Action item 2"
+  ],
+  "people": [
+    "Person Name 1",
+    "Person Name 2"
+  ]
+}
+
+Rules:
+- "quick" must be an array of 3–6 bullets.
+- Bullets must be plain text (no *, **, markdown).
+- "actions" must be actionable items.
+- "people" must list human names mentioned in thread.
+- DO NOT wrap the JSON in code fences.
+- DO NOT output anything except the JSON object.
+`;
+
+    const response = await model.generateContent(prompt);
+    const text = response.response.text();
+
+    // Clean Gemini output (remove ```json, ``` and whitespace)
+    let cleanText = text
+      .replace(/```json/gi, "")
+      .replace(/```/g, "")
+      .trim();
+
+    let summary;
+    try {
+      summary = JSON.parse(cleanText);
+    } catch (e) {
+      console.error("❌ Failed to parse Gemini JSON:", cleanText);
+      return res.status(500).json({ error: "Invalid AI JSON format", raw: cleanText });
+    }
+
+    // Cache for 24 hours
+    await redis.set(cacheKey, JSON.stringify(summary), "EX", 86400);
+
+    res.json(summary);
+  } catch (err) {
+    console.error("AI summary error:", err);
+    res.status(500).json({ error: "Failed to summarize thread" });
   }
 });
 

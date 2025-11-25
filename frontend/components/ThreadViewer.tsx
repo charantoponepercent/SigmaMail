@@ -1,3 +1,5 @@
+/* eslint-disable react-hooks/exhaustive-deps */
+/* eslint-disable react-hooks/rules-of-hooks */
 /* eslint-disable @next/next/no-img-element */
 "use client";
 
@@ -83,7 +85,11 @@ export default function ThreadViewer({ thread, onClose, onPrev, onNext }: Thread
   const [preview, setPreview] = useState<Attachment | null>(null);
   const [openMessage, setOpenMessage] = useState<number | null>(null);
   const [attachmentsOpen, setAttachmentsOpen] = useState(false);
+  const [aiSummaryOpen, setAiSummaryOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"images" | "docs" | "others">("images");
+  const [summary, setSummary] = useState(null);
+  const [loadingSummary, setLoadingSummary] = useState(false);
+  const [showSummary, setShowSummary] = useState(true);
   const toggleMessage = (index: number) => {
     setOpenMessage(prev => (prev === index ? null : index));
   };
@@ -150,45 +156,88 @@ export default function ThreadViewer({ thread, onClose, onPrev, onNext }: Thread
   );
   const enableCollapse = sorted.length > 2;
 
+  // --- AI Smart Summary ---
+  async function fetchSummary() {
+    try {
+      setLoadingSummary(true);
+      const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+      const resp = await fetch("http://localhost:4000/api/ai/summarize-thread", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          threadId: thread.threadId,
+          messages: thread.messages,
+        }),
+      });
+      const data = await resp.json();
+      setSummary(data);
+    } catch (e) {
+      console.error("Summary error", e);
+    } finally {
+      setLoadingSummary(false);
+    }
+  }
+
+  // auto-load summary on open
+  React.useEffect(() => {
+    if (thread?.threadId) fetchSummary();
+  }, [thread?.threadId]);
+
   const accountEmail =
     thread.account || (sorted[0] && sorted[0].account) || "";
 
   return (
     <div className="flex flex-col h-full overflow-hidden bg-white">
-      {/* TOP ACTION BAR — Zero‑style */}
-      <div className="flex items-center px-3 py-1 bg-white sticky top-0 z-40">
-        {/* LEFT: action buttons */}
+      {/* SUBJECT BAR */}
+      <div className="flex items-center px-3 py-1 bg-white sticky top-0 z-40 gap-3">
+
+        {/* ACTION BUTTONS */}
         <div className="flex border rounded-xl p-1 items-center gap-2">
-          <button onClick={onClose} className="p-2 cursor-pointer hover:bg-gray-100 rounded-md">
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-md">
             <X className="w-4 h-4" />
           </button>
-          <button onClick={onPrev} className="p-2 cursor-pointer hover:bg-gray-100 rounded-md">
+          <button onClick={onPrev} className="p-2 hover:bg-gray-100 rounded-md">
             <ChevronLeft className="w-4 h-4" />
           </button>
-          <button onClick={onNext} className="p-2 cursor-pointer hover:bg-gray-100 rounded-md">
+          <button onClick={onNext} className="p-2 hover:bg-gray-100 rounded-md">
             <ChevronRight className="w-4 h-4" />
           </button>
         </div>
 
-
-        {/* RIGHT: collapsible attachments trigger */}
+        {/* ATTACHMENTS */}
         {hasThreadAttachments && (
-          <div className="w-1/3 ml-3 flex">
-            <button
-              type="button"
-              onClick={() => setAttachmentsOpen((prev) => !prev)}
-              className="text-md cursor-pointer text-gray-700 border border-gray-200 rounded-xl py-3 hover:bg-gray-100 flex items-center justify-between px-3 transition-colors"
-            >
-              <span>Attachments ({threadAttachments.length})</span>
-              <ChevronRightIcon
-                className={`w-3 h-3 ml-2 transition-transform duration-200 ${
-                  attachmentsOpen ? "rotate-90" : "rotate-0"
-                }`}
-              />
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => setAttachmentsOpen((prev) => !prev)}
+            className="text-md text-gray-700 border border-gray-200 rounded-xl py-3 px-3 hover:bg-gray-100 flex items-center gap-1 transition"
+          >
+            <span>Attachments ({threadAttachments.length})</span>
+            <ChevronRightIcon
+              className={`w-4 h-4 transition-transform duration-200 ${
+                attachmentsOpen ? "rotate-90" : ""
+              }`}
+            />
+          </button>
         )}
-        </div>
+
+        {/* AI SUMMARY */}
+        <button
+          type="button"
+          onClick={() => setAiSummaryOpen((prev) => !prev)}
+          className="text-md text-gray-700 border border-gray-200 rounded-xl py-3 px-3 hover:bg-gray-100 flex items-center gap-1 transition"
+        >
+          <span>AI Summary</span>
+          <ChevronRightIcon
+            className={`w-4 h-4 transition-transform duration-200 ${
+              aiSummaryOpen ? "rotate-90" : ""
+            }`}
+          />
+        </button>
+
+      </div>        
 
 
       {/* SUBJECT BAR */}
@@ -296,8 +345,8 @@ export default function ThreadViewer({ thread, onClose, onPrev, onNext }: Thread
                           />
                         ) : (
                           <div className="w-full h-28 flex items-center justify-center bg-gray-100 rounded-t-md text-xs text-gray-600">
-                            {att.mimeType?.split("/")[1]?.toUpperCase() || "FILE"}
-                          </div>
+                              {att.mimeType?.split("/")[1]?.toUpperCase() || "FILE"}
+                            </div>
                         )}
                         <div className="px-2 py-2">
                           <div className="flex items-center justify-between gap-1">
@@ -321,6 +370,55 @@ export default function ThreadViewer({ thread, onClose, onPrev, onNext }: Thread
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* AI SUMMARY COLLAPSIBLE PANEL */}
+      {aiSummaryOpen && (
+        <div className="border-b border-gray-200 p-3 bg-gray-50">
+          <div className="flex items-center justify-between">
+            <h2 className="text-[13px] font-semibold text-gray-900 flex items-center gap-2">
+              ✨ Smart Summary
+            </h2>
+            <button
+              onClick={() => fetchSummary()}
+              className="text-xs px-2 py-1 rounded-md border hover:bg-gray-100"
+            >
+              ↻ Regenerate
+            </button>
+          </div>
+
+          <div className="mt-3 text-[13px] text-gray-700 space-y-2">
+            {loadingSummary && (
+              <div className="animate-pulse space-y-2">
+                <div className="h-3 bg-gray-200 rounded w-3/4"></div>
+                <div className="h-3 bg-gray-200 rounded w-1/2"></div>
+                <div className="h-3 bg-gray-200 rounded w-2/3"></div>
+              </div>
+            )}
+
+            {!loadingSummary && summary && (
+              <>
+                <ul className="list-disc pl-5 space-y-1">
+                  {Array.isArray(summary?.quick) &&
+                    summary.quick.map((point, i) => (
+                      <li key={i}>{point}</li>
+                    ))}
+                </ul>
+
+                {Array.isArray(summary?.actions) && summary.actions.length > 0 && (
+                  <div className="mt-2">
+                    <h3 className="font-semibold text-[12px] text-gray-900">⚡ Actions</h3>
+                    <ul className="list-disc pl-5 space-y-1">
+                      {summary.actions.map((a, i) => (
+                        <li key={i}>{a}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
         </div>
       )}
 
