@@ -10,9 +10,7 @@ import Thread from '../models/Thread.js';
 import { getAuthorizedClientForAccount } from '../utils/googleClient.js';
 import { parsePayloadDeep, fixBase64, fetchAttachmentData } from '../utils/emailParser.js';
 import {generateEmbedding} from '../utils/embedding.js';
-import { classifyEmbedding } from "../utils/classify.js"; // add at top of file
-
-
+import { classifyEmailFull } from "../classification/classificationEngine.js";
 import cloudinary from '../config/cloudinary.js'; // <-- ADDED
 
 
@@ -310,21 +308,20 @@ async function syncSingleMessage(gmail, messageId, account) {
   }
 
 
-  let categoryResult = null;
-  try {
-    if (embeddingVector) {
-      const scored = await classifyEmbedding(embeddingVector, 3);
-      if (scored && scored.length > 0) {
-        categoryResult = {
-          top: scored[0].name,
-          topScore: scored[0].score,
-          candidates: scored, // array with {name, score,...}
-        };
-      }
+    let categoryResult = null;
+
+    try {
+      categoryResult = await classifyEmailFull({
+        subject: find("Subject"),
+        from: find("From"),
+        text: composedBody,
+        plainText: textBody,
+        embedding: embeddingVector
+      });
+    } catch (err) {
+      console.error("❌ classifyEmailFull failed:", err);
     }
-  } catch (err) {
-    console.error("Classification error:", err);
-  }
+
   const emailDoc = await Email.findOneAndUpdate(
     emailFilter,
     {
@@ -356,9 +353,10 @@ async function syncSingleMessage(gmail, messageId, account) {
       snippet: full.data.snippet || '',
       hasInlineImages: inlineParts.length > 0,
 
-      category: categoryResult ? categoryResult.top : null,
-      categoryScore: categoryResult ? categoryResult.topScore : null,
-      categoryCandidates: categoryResult ? categoryResult.candidates : [],
+      category: categoryResult?.top || null,
+      categoryScore: categoryResult?.topScore || null,
+      categoryCandidates: categoryResult?.candidates || [],
+      heuristic: categoryResult?.heuristic || null,
     },
     { upsert: true, new: true }
   );
