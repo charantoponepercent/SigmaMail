@@ -281,89 +281,212 @@ const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
 router.post("/ai/summarize-thread", async (req, res) => {
   try {
-    const { threadId, messages } = req.body;
+    const { threadId } = req.body;
 
-    if (!threadId || !messages) {
-      return res.status(400).json({ error: "threadId and messages are required" });
+    if (!threadId) {
+      return res.status(400).json({ error: "threadId is required" });
     }
 
+    // Fetch thread
+    const thread = await Thread.findOne({
+      threadId,
+      userId: req.user.id
+    }).lean();
+
+    if (!thread) {
+      return res.status(404).json({ error: "Thread not found" });
+    }
+
+    // Fetch messages
+    const messages = await Email.find({
+      threadId,
+      userId: req.user.id
+    })
+      .sort({ date: 1 })
+      .lean();
+
+    if (!messages || messages.length === 0) {
+      return res.status(404).json({ error: "No messages found for this thread" });
+    }
+
+    // Redis cache
     const cacheKey = `thread_summary:${threadId}`;
     const cached = await redis.get(cacheKey);
+    if (cached) return res.json(JSON.parse(cached));
 
-    if (cached) {
-      return res.json(JSON.parse(cached));
-    }
-
-    // Clean and trim messages to avoid oversized payloads
+    // -------------------------
+    // CLEAN / FORMAT THREAD
+    // -------------------------
     const cleanedMessages = messages
-      .map(m => {
+      .map((m) => {
         const raw = (m.textBody || m.body || "").replace(/<[^>]*>?/gm, "");
-        const trimmed = raw.slice(0, 1500); // limit to 1500 chars per email
+        const trimmed = raw.slice(0, 1500);
         return `From: ${m.from}\n${trimmed}`;
       })
       .join("\n\n---\n\n");
 
+    // -------------------------
+    // PROMPT
+    // -------------------------
     const prompt = `
-You are an email summarization engine. Summarize the following email thread.
+        You are the "Summarize this email" AI feature in Gmail. Summarize the following email thread.
 
-Thread:
-${cleanedMessages}
+        Thread:
+        ${cleanedMessages}
 
-Return ONLY valid JSON (no markdown, no explanations, no backticks).
+        Return ONLY valid JSON (no markdown code fences, no backticks).
+        The JSON must follow exactly:
 
-The JSON MUST follow this exact schema:
+        {
+          "summary": "Markdown formatted summary string here"
+        }
 
-{
-  "quick": [
-    "First key bullet point here",
-    "Second key bullet point here",
-    "Third key bullet point here"
-  ],
-  "actions": [
-    "Action item 1",
-    "Action item 2"
-  ],
-  "people": [
-    "Person Name 1",
-    "Person Name 2"
-  ]
-}
+        STYLE RULES:
+        1. Start with a short high-level paragraph.
+        2. Follow with bulleted list *only if needed*.
+        3. Use **Markdown bold** for names, dates, deadlines, prices.
+        4. Tone: professional, concise.
+        `;
 
-Rules:
-- "quick" must be an array of 3–6 bullets.
-- Bullets must be plain text (no *, **, markdown).
-- "actions" must be actionable items.
-- "people" must list human names mentioned in thread.
-- DO NOT wrap the JSON in code fences.
-- DO NOT output anything except the JSON object.
-`;
+    // -------------------------
+    // GEMINI REQUEST
+    // -------------------------
+    const geminiRes = await model.generateContent(prompt);
+    const text = geminiRes.response.text();
 
-    const response = await model.generateContent(prompt);
-    const text = response.response.text();
-
-    // Clean Gemini output (remove ```json, ``` and whitespace)
+    // -------------------------
+    // CLEAN RAW RESPONSE
+    // -------------------------
     let cleanText = text
       .replace(/```json/gi, "")
       .replace(/```/g, "")
       .trim();
 
+    // Fix trailing commas & escaping
+    cleanText = cleanText
+      .replace(/,\s*}/g, "}")
+      .replace(/,\s*]/g, "]")
+      .replace(/\\+\s*"}/g, "\"}")
+      .trim();
+
+    // -------------------------
+    // PARSE JSON — WITH FALLBACK
+    // -------------------------
     let summary;
     try {
       summary = JSON.parse(cleanText);
-    } catch (e) {
-      console.error("❌ Failed to parse Gemini JSON:", cleanText);
-      return res.status(500).json({ error: "Invalid AI JSON format", raw: cleanText });
+    } catch (err) {
+      console.warn("⚠ JSON parse failed, trying fallback…");
+
+      const match = cleanText.match(/"summary"\s*:\s*"([\s\S]*?)"/);
+      if (match) {
+        summary = { summary: match[1].trim() };
+      } else {
+        console.error("❌ Gemini returned invalid JSON:", cleanText);
+        return res.status(500).json({
+          error: "Invalid AI JSON format",
+          raw: cleanText,
+        });
+      }
     }
 
-    // Cache for 24 hours
-    await redis.set(cacheKey, JSON.stringify(summary), "EX", 86400);
+    // -------------------------
+    // SAVE TO CACHE (24h)
+    // -------------------------
+    await redis.set(cacheKey, JSON.stringify(summary), "EX", 60);
 
+    // -------------------------
+    // SEND RESULT
+    // -------------------------
     res.json(summary);
+
   } catch (err) {
     console.error("AI summary error:", err);
     res.status(500).json({ error: "Failed to summarize thread" });
   }
 });
+
+
+/* ---------------------------------------------------------
+   POST /api/ai/classify
+   Extremely flexible classifier — returns summarize: true
+   for ANY user message that *might* imply a summary request
+--------------------------------------------------------- */
+router.post("/ai/classify", async (req, res) => {
+  try {
+    const { message } = req.body;
+    if (!message || typeof message !== "string") {
+      return res.status(400).json({ error: "message is required" });
+    }
+
+    // Build classifier prompt
+    const prompt = `
+You are a classifier. Decide if the user is implicitly or explicitly
+asking for a SUMMARY of the email they are viewing.
+
+User message:
+"${message}"
+
+Rules for classification:
+- This is EXTREMELY FLEXIBLE mode (Mode C).
+- If the message could *possibly* mean:
+  - explain
+  - clarify
+  - what is this
+  - what's going on
+  - show me
+  - mw / me / this / that
+  - is this important
+  - brief
+  - give idea
+  - context
+  - tl;dr
+  - anything unclear or vague
+  - or ANYTHING that could imply wanting context or understanding
+→ THEN RETURN summarize: true
+
+Otherwise summarize: false.
+
+Return ONLY valid JSON:
+{ "summarize": true }
+OR
+{ "summarize": false }
+`;
+
+    const geminiRes = await model.generateContent(prompt);
+    const text = geminiRes.response.text().trim();
+
+    // Clean fences
+    let cleanText = text
+      .replace(/```json/gi, "")
+      .replace(/```/g, "")
+      .trim();
+
+    // Fallback fix
+    cleanText = cleanText
+      .replace(/,\s*}/g, "}")
+      .replace(/,\s*]/g, "]")
+      .trim();
+
+    let result;
+    try {
+      result = JSON.parse(cleanText);
+    } catch (err) {
+      // fallback manual parse
+      if (/true/.test(cleanText)) {
+        result = { summarize: true };
+      } else {
+        result = { summarize: false };
+      }
+    }
+
+    res.json(result);
+  } catch (err) {
+    console.error("Classifier error:", err);
+    res.status(500).json({ error: "Classifier failed" });
+  }
+});
+
 
 export default router;
 
