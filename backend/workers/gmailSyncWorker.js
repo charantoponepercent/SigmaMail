@@ -10,6 +10,8 @@ import Thread from '../models/Thread.js';
 import { getAuthorizedClientForAccount } from '../utils/googleClient.js';
 import { parsePayloadDeep, fixBase64, fetchAttachmentData } from '../utils/emailParser.js';
 import {generateEmbedding} from '../utils/embedding.js';
+import { classifyEmbedding } from "../utils/classify.js"; // add at top of file
+
 
 import cloudinary from '../config/cloudinary.js'; // <-- ADDED
 
@@ -306,6 +308,23 @@ async function syncSingleMessage(gmail, messageId, account) {
   } catch (err) {
     console.error("❌ Embedding generation failed for email:", err.message);
   }
+
+
+  let categoryResult = null;
+  try {
+    if (embeddingVector) {
+      const scored = await classifyEmbedding(embeddingVector, 3);
+      if (scored && scored.length > 0) {
+        categoryResult = {
+          top: scored[0].name,
+          topScore: scored[0].score,
+          candidates: scored, // array with {name, score,...}
+        };
+      }
+    }
+  } catch (err) {
+    console.error("Classification error:", err);
+  }
   const emailDoc = await Email.findOneAndUpdate(
     emailFilter,
     {
@@ -336,6 +355,10 @@ async function syncSingleMessage(gmail, messageId, account) {
       labelIds: full.data.labelIds || [],
       snippet: full.data.snippet || '',
       hasInlineImages: inlineParts.length > 0,
+
+      category: categoryResult ? categoryResult.top : null,
+      categoryScore: categoryResult ? categoryResult.topScore : null,
+      categoryCandidates: categoryResult ? categoryResult.candidates : [],
     },
     { upsert: true, new: true }
   );

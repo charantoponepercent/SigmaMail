@@ -52,6 +52,10 @@ const EmailSchema = new mongoose.Schema(
       default: null,
       index: false,   // change to true only when using MongoDB vector indexing
     },
+
+    category: { type: String, index: true, default: null },
+    categoryScore: { type: Number, default: null },
+    categoryCandidates: { type: Array, default: [] },
   },
   { timestamps: true }
 );

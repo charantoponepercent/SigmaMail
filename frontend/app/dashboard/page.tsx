@@ -917,15 +917,34 @@ export default function Dashboard() {
                   {/* Bottom Row: Category tag + Account email + Attachments */}
                   <div className="flex items-center gap-2 flex-wrap">
                     {/* Category badge (Work, Bills, Personal, etc.) */}
-                    <span className={`px-2 py-0.5 text-[10px] font-medium rounded ${
-                      msg.category === 'Work' ? 'bg-blue-100 text-blue-700' :
-                      msg.category === 'Bills' ? 'bg-orange-100 text-orange-700' :
-                      msg.category === 'Personal' ? 'bg-purple-100 text-purple-700' :
-                      msg.category === 'Finance' ? 'bg-green-100 text-green-700' :
-                      msg.category === 'Travel' ? 'bg-cyan-100 text-cyan-700' :
-                      'bg-gray-100 text-gray-700'
-                    }`}>
-                      {msg.category || 'General'}
+                    <span
+                      className={`px-2 py-0.5 text-[10px] font-medium rounded ${
+                        msg.category === "Work"
+                          ? "bg-blue-100 text-blue-700"
+                          : msg.category === "Finance"
+                          ? "bg-green-100 text-green-700"
+                          : msg.category === "Bills"
+                          ? "bg-orange-100 text-orange-700"
+                          : msg.category === "Personal"
+                          ? "bg-purple-100 text-purple-700"
+                          : msg.category === "Travel"
+                          ? "bg-cyan-100 text-cyan-700"
+                          : msg.category === "Promotions"
+                          ? "bg-pink-100 text-pink-700"
+                          : msg.category === "Updates"
+                          ? "bg-gray-100 text-gray-700"
+                          : msg.category === "Social"
+                          ? "bg-yellow-100 text-yellow-700"
+                          : msg.category === "Shopping"
+                          ? "bg-emerald-100 text-emerald-700"
+                          : msg.category === "Priority"
+                          ? "bg-red-100 text-red-700"
+                          : msg.category === "Spam"
+                          ? "bg-red-200 text-red-900"
+                          : "bg-gray-100 text-gray-700"
+                      }`}
+                    >
+                      {msg.category || "General"}
                     </span>
 
                     {/* Account email with dot separator */}
