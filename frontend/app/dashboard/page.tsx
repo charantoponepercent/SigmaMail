@@ -112,6 +112,7 @@ export default function Dashboard() {
   const [accounts, setAccounts] = useState<DashboardAccount[]>([]);
   const [currentFolder, setCurrentFolder] = useState("INBOX");
   const [selectedAccount, setSelectedAccount] = useState<string | null>("ALL");
+  const [sourceMessages, setSourceMessages] = useState<DashboardMessage[]>([]);
   const [messages, setMessages] = useState<DashboardMessage[]>([]);
   const [nextPageToken, setNextPageToken] = useState<string | null>(null);
   const [selectedMessage, setSelectedMessage] =
@@ -125,6 +126,7 @@ export default function Dashboard() {
 
   // FILTER BAR STATE
   const [activeFilter, setActiveFilter] = useState("TODAY");
+  const [activeCategory, setActiveCategory] = useState("All");
 
   const loadAccounts = useCallback(
     async (token: string) => {
@@ -199,8 +201,12 @@ export default function Dashboard() {
     grouped.forEach((t: any) => {
       delete t.threadAttachmentCount;
     });
-    setMessages(grouped);
-    setNextPageToken(null);
+    setSourceMessages(grouped);
+    setMessages(
+      activeCategory === "All"
+        ? grouped
+        : grouped.map(m => ({ ...m, hidden: m.category !== activeCategory }))
+    );
   }
 
   async function loadYesterday() {
@@ -238,8 +244,12 @@ export default function Dashboard() {
     grouped.forEach((t: any) => {
       delete t.threadAttachmentCount;
     });
-    setMessages(grouped);
-    setNextPageToken(null);
+    setSourceMessages(grouped);
+    setMessages(
+      activeCategory === "All"
+        ? grouped
+        : grouped.map(m => ({ ...m, hidden: m.category !== activeCategory }))
+    );
   }
 
   async function loadWeek() {
@@ -277,8 +287,12 @@ export default function Dashboard() {
     grouped.forEach((t: any) => {
       delete t.threadAttachmentCount;
     });
-    setMessages(grouped);
-    setNextPageToken(null);
+    setSourceMessages(grouped);
+    setMessages(
+      activeCategory === "All"
+        ? grouped
+        : grouped.map(m => ({ ...m, hidden: m.category !== activeCategory }))
+    );
   }
 
   useEffect(() => {
@@ -468,7 +482,7 @@ export default function Dashboard() {
       });
       const data = await res.json();
       const emails = Array.isArray(data.emails) ? data.emails : [];
-  
+
       // Group by thread (or messageId) like other loaders
       const grouped = Object.values(
         emails.reduce((acc: any, msg: any) => {
@@ -482,8 +496,12 @@ export default function Dashboard() {
       grouped.forEach((t: any) => {
         delete t.threadAttachmentCount;
       });
-      setMessages(grouped as DashboardMessage[]);
-      setNextPageToken(null);
+      setSourceMessages(grouped);
+      setMessages(
+        activeCategory === "All"
+          ? grouped
+          : grouped.map(m => ({ ...m, hidden: m.category !== activeCategory }))
+      );
     } catch (err) {
       console.error("Load monthly error:", err);
     } finally {
@@ -801,6 +819,7 @@ export default function Dashboard() {
 
 
   {/* Filter Dropdown */}
+  <div className="flex sticky bg-white z-10">
   <div className="px-3 py-3 w-1/3 sticky top-[56px] bg-white z-10">
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -821,6 +840,48 @@ export default function Dashboard() {
         </DropdownMenuRadioGroup>
       </DropdownMenuContent>
     </DropdownMenu>
+  </div>
+
+  {/* Category Filter Dropdown */}
+  <div className="px-3 py-3 w-1/3 sticky top-[56px] bg-white z-10">
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button className="w-full text-left bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-[12px] flex items-center justify-between">
+          <span className="truncate">{activeCategory || "All Categories"}</span>
+          <svg className="w-4 h-4 text-gray-500" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+            <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06-.02L10 10.94l3.71-3.75a.75.75 0 111.08 1.04l-4.25 4.3a.75.75 0 01-1.08 0L5.25 8.23a.75.75 0 01-.02-1.06z" clipRule="evenodd" />
+          </svg>
+        </button>
+      </DropdownMenuTrigger>
+
+      <DropdownMenuContent className="w-56 ml-24">
+        <DropdownMenuRadioGroup value={activeCategory} onValueChange={(cat) => {
+          setActiveCategory(cat);
+          setMessages(
+            cat === "All"
+              ? sourceMessages
+              : sourceMessages.map(msg => ({
+                  ...msg,
+                  hidden: msg.category !== cat
+                }))
+          );
+        }}>
+          <DropdownMenuRadioItem value="All">All</DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="Work">Work</DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="Finance">Finance</DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="Bills">Bills</DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="Personal">Personal</DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="Travel">Travel</DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="Promotions">Promotions</DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="Updates">Updates</DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="Social">Social</DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="Shopping">Shopping</DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="Priority">Priority</DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="Spam">Spam</DropdownMenuRadioItem>
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  </div>
   </div>
 
   {/* Email List */}
