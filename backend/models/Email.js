@@ -42,8 +42,16 @@ const EmailSchema = new mongoose.Schema(
     isRead: { type: Boolean, default: false },
     hasInlineImages: { type: Boolean, default: false },
     hasAttachments: { type: Boolean, default: false },
+
     isExternal: { type: Boolean, default: false },
     provider: { type: String },
+
+    // 🧠 NEW — AI VECTOR EMBEDDING FIELD
+    embedding: {
+      type: [Number], // array of floats
+      default: null,
+      index: false,   // change to true only when using MongoDB vector indexing
+    },
   },
   { timestamps: true }
 );

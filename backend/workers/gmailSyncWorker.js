@@ -9,8 +9,10 @@ import Email from '../models/Email.js';
 import Thread from '../models/Thread.js';
 import { getAuthorizedClientForAccount } from '../utils/googleClient.js';
 import { parsePayloadDeep, fixBase64, fetchAttachmentData } from '../utils/emailParser.js';
+import {generateEmbedding} from '../utils/embedding.js';
 
 import cloudinary from '../config/cloudinary.js'; // <-- ADDED
+
 
 // Main Sync Function
 export async function runGmailSyncForUser(userId) {
@@ -290,6 +292,20 @@ async function syncSingleMessage(gmail, messageId, account) {
   // -------------------------------------------------------
   // STORE EMAIL IN MONGODB
   // -------------------------------------------------------
+  // ---------------------
+  // GENERATE EMBEDDING
+  // ---------------------
+  const cleanedText = [
+    find("Subject"),
+    textBody || finalHtml.replace(/<[^>]+>/g, "")
+  ].join("\n").trim();
+
+  let embeddingVector = null;
+  try {
+    embeddingVector = await generateEmbedding(cleanedText);
+  } catch (err) {
+    console.error("❌ Embedding generation failed for email:", err.message);
+  }
   const emailDoc = await Email.findOneAndUpdate(
     emailFilter,
     {
@@ -315,6 +331,7 @@ async function syncSingleMessage(gmail, messageId, account) {
 
       attachments: uploadedAttachments,
       hasAttachments: uploadedAttachments.length > 0,
+      embedding: embeddingVector,
 
       labelIds: full.data.labelIds || [],
       snippet: full.data.snippet || '',

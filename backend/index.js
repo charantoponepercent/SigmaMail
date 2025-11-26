@@ -5,6 +5,8 @@ import cors from 'cors';
 import authRoutes from './routes/authRoutes.js';
 import apiRoutes from './routes/apiRoutes.js';
 import userAuthRoutes from './routes/userAuthRoutes.js';
+import testEmbedding from "./routes/testEmbedding.js";
+
 
 dotenv.config();
 
@@ -28,6 +30,7 @@ app.get('/', (req, res) => {
 app.use("/authe", userAuthRoutes);
 app.use("/auth", authRoutes);
 app.use("/api", apiRoutes);
+app.use("/testapi", testEmbedding);
 
 
 
