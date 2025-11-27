@@ -1,4 +1,4 @@
-// backend/classification/heuristic.js
+// backend/classification/heuristics.js
 import CATEGORIZATION_RULES from "./categorizationRules.js";
 
 /**
@@ -20,7 +20,9 @@ function scoreKeywords(text) {
   for (const [cat, tokens] of Object.entries(rules)) {
     for (const tok of tokens) {
       if (!tok) continue;
-      if (lower.includes(tok.toLowerCase())) scores[cat] += 1;
+      // match whole words more conservatively (avoid substring false positives)
+      const pattern = new RegExp(`\\b${escapeRegExp(tok.toLowerCase())}\\b`, "i");
+      if (pattern.test(lower)) scores[cat] += 1;
     }
   }
   return scores;
@@ -41,6 +43,10 @@ function scoreSender(sender) {
   return scores;
 }
 
+function escapeRegExp(string) {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 /**
  * classifyHeuristic(email)
  * email: { subject, textBody, snippet, from }
@@ -57,7 +63,7 @@ export function classifyHeuristic(email = {}) {
     base[cat] = (kw[cat] || 0) + (sd[cat] || 0);
   }
 
-  // choose best
+  // choose best (but keep full scores for fusion)
   let best = "General";
   let bestScore = -Infinity;
   for (const cat of Object.keys(base)) {

@@ -6,6 +6,7 @@ import authRoutes from './routes/authRoutes.js';
 import apiRoutes from './routes/apiRoutes.js';
 import userAuthRoutes from './routes/userAuthRoutes.js';
 import testEmbedding from "./routes/testEmbedding.js";
+import searchRoutes from "./routes/search.js";
 
 
 dotenv.config();
@@ -30,7 +31,8 @@ app.get('/', (req, res) => {
 app.use("/authe", userAuthRoutes);
 app.use("/auth", authRoutes);
 app.use("/api", apiRoutes);
-app.use("/testapi", testEmbedding);
+app.use("/test", testEmbedding);
+app.use("/search_api", searchRoutes);
 
 
 

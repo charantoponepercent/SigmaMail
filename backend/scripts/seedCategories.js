@@ -17,57 +17,55 @@ import { generateEmbedding } from "../utils/embedding.js"; // your existing util
 const MONGO = process.env.MONGO_URI;
 
 const CATEGORIES = [
-    {
-      name: "Work",
-      description:
-        "Professional correspondence involving internal team operations, external client management, or project execution. Includes scheduling (calendar invites, zoom links, agendas), deliverables (reports, slide decks, feedback), administrative tasks (HR updates, payroll, OOO replies), and corporate platform notifications (Slack, Jira, Asana). Tone is generally formal or semi-formal.",
-    },
-    {
-      name: "Personal",
-      description:
-        "Direct, human-to-human communication with friends, family, or acquaintances. Includes casual conversation, life updates, event planning (weddings, parties), shared photos, and non-commercial discussions. Characterized by informal language, slang, emotional context, and lack of commercial headers or footers.",
-    },
-    {
-      name: "Finance",
-      description:
-        "Official financial documentation and banking alerts. Includes bank statements, credit card transaction alerts, tax documents (1099, W2), investment portfolio updates, insurance policies, loan status, salary slips, and utility bills. distinct from 'Shopping' as it focuses on money management, assets, and liabilities rather than consumer goods.",
-    },
-    {
-      name: "Shopping",
-      description:
-        "Transactional emails regarding the purchase of physical or digital goods. Includes order confirmations, shipping tracking numbers, delivery status (out for delivery, delivered), electronic receipts, return labels, and refund notifications. Focuses on the lifecycle of a specific order from e-commerce platforms (Amazon, Shopify, retail brands).",
-    },
-    {
-      name: "Travel",
-      description:
-        "Logistics and itineraries for transportation and accommodation. Includes flight booking confirmations (PNR codes, boarding passes), hotel or Airbnb reservations, car rental receipts, ride-share summaries (Uber/Lyft), train tickets, visa applications, and frequent flyer status updates.",
-    },
-    {
-      name: "Education",
-      description:
-        "Academic and learning-related communications. Includes university announcements, assignment deadlines, grade releases, enrollment verifications, Learning Management System (LMS) notifications (Canvas, Blackboard), online course certificates (Coursera, Udemy), and webinar registrations.",
-    },
-    {
-      name: "Promotions",
-      description:
-        "Unsolicited or opt-in marketing material aiming to generate sales or engagement. Includes newsletters, discount codes, flash sales, 'you might also like' recommendations, product launches, seasonal offers, and brand storytelling. Characterized by persuasive copywriting and heavy use of graphics.",
-    },
-    {
-      name: "Subscriptions",
-      description:
-        "Notifications regarding recurring services and memberships. Includes SaaS billing receipts, streaming service renewals (Netflix, Spotify), newsletter subscription confirmations, free trial expiration warnings, auto-pay notifications, and membership tier changes.",
-    },
-    {
-      name: "Social",
-      description:
-        "Automated notifications from social networking platforms and forums. Includes 'new follower' alerts, mentions, tagged photos, comment notifications, connection requests (LinkedIn), digest emails summarizing network activity, and direct messages sent via platform gateways.",
-    },
-    {
-      name: "Priority",
-      description:
-        "High-urgency security and authentication alerts requiring immediate attention. Includes Two-Factor Authentication (2FA) codes, One-Time Passwords (OTP), password reset links, 'new login from unrecognized device' warnings, legal notices, and fraud detection alerts.",
-    },
-  ];
+  {
+    name: "Work",
+    seedText: "Professional communication about projects, tasks, meetings, and corporate work coordination."
+  },
+  {
+    name: "Personal",
+    seedText: "Casual messages between friends or family sharing personal updates or informal conversations."
+  },
+  {
+    name: "Finance",
+    seedText: "Banking or financial updates including statements, transactions, balances, and investment notices."
+  },
+  {
+    name: "Bills",
+    seedText: "Payment reminders or invoices indicating due amounts and billing deadlines for services."
+  },
+  {
+    name: "Shopping",
+    seedText: "Order confirmations, shipping updates, tracking details, and delivery information for purchases."
+  },
+  {
+    name: "Travel",
+    seedText: "Flight or hotel bookings, itineraries, reservation confirmations, and trip schedule information."
+  },
+  {
+    name: "Promotions",
+    seedText: "Marketing emails containing sales, discounts, special offers, or promotional announcements."
+  },
+  {
+    name: "Subscriptions",
+    seedText: "Service or membership renewal notices, plan updates, and recurring subscription notifications."
+  },
+  {
+    name: "Social",
+    seedText: "Notifications about followers, comments, tags, mentions, or other social media activity."
+  },
+  {
+    name: "Priority",
+    seedText: "Security alerts requiring urgent action such as OTP codes, login warnings, or verification prompts."
+  },
+  {
+    name: "Spam",
+    seedText: "Unsolicited or deceptive emails offering unrealistic rewards, promotions, or phishing content."
+  },
+  {
+    name: "General",
+    seedText: "Neutral informational emails or automated confirmations without a specific category context."
+  }
+];
 
 async function main() {
   await mongoose.connect(MONGO, {});
@@ -77,7 +75,7 @@ async function main() {
   for (const cat of CATEGORIES) {
     try {
       console.log("Generating embedding for:", cat.name);
-      const emb = await generateEmbedding(`${cat.name}. ${cat.description}`);
+      const emb = await generateEmbedding(`${cat.name}. ${cat.seedText}`);
       if (!emb) {
         console.warn("No embedding returned for", cat.name);
         continue;
@@ -86,7 +84,7 @@ async function main() {
       // Upsert category
       const existing = await Category.findOne({ name: cat.name });
       if (existing) {
-        existing.description = cat.description;
+        existing.description = cat.seedText;
         existing.embedding = emb;
         existing.updatedAt = new Date();
         await existing.save();
@@ -94,7 +92,7 @@ async function main() {
       } else {
         await Category.create({
           name: cat.name,
-          description: cat.description,
+          description: cat.seedText,
           embedding: emb,
         });
         console.log(`Created category: ${cat.name}`);

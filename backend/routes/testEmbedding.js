@@ -7,14 +7,19 @@ const router = express.Router();
 router.post("/test-classify", async (req, res) => {
   try {
     const result = await classifyEmailFull({
-      subject: req.body.subject,
-      textBody: req.body.text,
+      subject: req.body.subject || "",
+      text: req.body.text || "",        // <-- Correct field
+      plainText: req.body.text || "",   // <-- Also feed to plainText
       snippet: "",
       from: req.body.from || ""
     });
 
-    res.json(result);
+    res.json({
+      ok: true,
+      result
+    });
   } catch (e) {
+    console.error("❌ /test-classify failed:", e);
     res.status(500).json({ error: e.message });
   }
 });

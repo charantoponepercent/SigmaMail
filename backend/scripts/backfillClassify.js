@@ -9,7 +9,7 @@ const __dirname = dirname(__filename);
 dotenv.config({ path: join(__dirname, "../.env") });
 import mongoose from "mongoose";
 import Email from "../models/Email.js";
-import { classifyEmbedding } from "../utils/classify.js";
+import { classifyEmailFull } from "../classification/classificationEngine.js";
 
 const MONGO = process.env.MONGO_URI;
 
@@ -21,15 +21,26 @@ async function main() {
   let count = 0;
   for await (const email of cursor) {
     try {
-      const scored = await classifyEmbedding(email.embedding, 3);
-      const top = scored && scored.length ? scored[0] : null;
+      const result = await classifyEmailFull({
+        subject: email.subject || "",
+        text: email.textBody || "",
+        plainText: email.textBody || "",
+        snippet: email.snippet || "",
+        from: email.from || "",
+        embedding: email.embedding || null
+      });
+
       await Email.updateOne(
         { _id: email._id },
         {
           $set: {
-            category: top ? top.name : null,
-            categoryScore: top ? top.score : null,
-            categoryCandidates: scored,
+            category: result.top,
+            categoryScore: result.topScore,
+            categoryCandidates: result.candidates,
+            heuristic: result.heuristic,
+            phrase: result.phrase,
+            semantic: result.semantic,
+            exclusion: result.exclusion
           },
         }
       );

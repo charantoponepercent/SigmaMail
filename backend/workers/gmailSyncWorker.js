@@ -343,6 +343,8 @@ async function syncSingleMessage(gmail, messageId, account) {
       inlineImages: inlineParts.map((i) => ({
         cid: i.cid,
         mimeType: i.mimeType,
+        size: 0,
+        storageUrl: null,
       })),
 
       attachments: uploadedAttachments,
@@ -357,6 +359,9 @@ async function syncSingleMessage(gmail, messageId, account) {
       categoryScore: categoryResult?.topScore || null,
       categoryCandidates: categoryResult?.candidates || [],
       heuristic: categoryResult?.heuristic || null,
+      phrase: categoryResult?.phrase || {},
+      semantic: categoryResult?.semantic || {},
+      exclusion: categoryResult?.exclusion || {},
     },
     { upsert: true, new: true }
   );

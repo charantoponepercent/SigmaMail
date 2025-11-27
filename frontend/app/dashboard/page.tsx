@@ -1,9 +1,17 @@
+/* eslint-disable react-hooks/rules-of-hooks */
 /* eslint-disable react-hooks/exhaustive-deps */
-/* eslint-disable react/jsx-no-undef */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+// 🔵 Debounce helper (prevents API on each keystroke)
+function debounce(fn: any, delay: number) {
+  let timer: NodeJS.Timeout;
+  return (...args: any[]) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), delay);
+  };
+}
 import { useRouter } from "next/navigation";
 import { API_BASE } from "@/lib/api";
 import DisconnectDialog from "@/components/DisconnectDialog";
@@ -120,6 +128,8 @@ export default function Dashboard() {
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [showDialog, setShowDialog] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchLoading, setSearchLoading] = useState(false);  
   const [accountToDisconnect, setAccountToDisconnect] = useState<string | null>(
     null
   );
@@ -127,6 +137,74 @@ export default function Dashboard() {
   // FILTER BAR STATE
   const [activeFilter, setActiveFilter] = useState("TODAY");
   const [activeCategory, setActiveCategory] = useState("All");
+  const handleCmdSearch = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const q = e.target.value.trim();
+  
+    if (!q) {
+      setMessages(sourceMessages);
+      return;
+    }
+  
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API_BASE.replace("/api", "")}/search_api/search`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ query: q, mode: "semantic" })
+      });
+  
+      const data = await res.json();
+      const raw = data.results || [];
+  
+      // 1️⃣ extract the email object
+      const emails = raw.map((r: any) => r.email);
+  
+      // 2️⃣ group by thread like inbox
+      const grouped = Object.values(
+        emails.reduce((acc: any, msg: any) => {
+          const key = msg.threadId || msg._id || msg.messageId;
+          if (!key) return acc;
+  
+          if (!acc[key]) {
+            acc[key] = {
+              ...msg,
+              id: msg._id || msg.messageId || key,
+              count: 1,
+              hidden: false
+            };
+          } else {
+            acc[key].count++;
+          }
+  
+          return acc;
+        }, {})
+      );
+  
+      // 3️⃣ sort by highest semantic score
+      grouped.sort((a: any, b: any) => {
+        const scoreA = raw.find((r: any) => r.email._id === a._id)?.score || 0;
+        const scoreB = raw.find((r: any) => r.email._id === b._id)?.score || 0;
+        return scoreB - scoreA;
+      });
+  
+      // 4️⃣ update inbox view
+      setMessages(grouped);
+  
+    } catch (err) {
+      console.error("🔍 Semantic search error:", err);
+    }
+  };
+
+
+  const debouncedSearch = useCallback(
+    debounce((e: React.ChangeEvent<HTMLInputElement>) => {
+      handleCmdSearch(e);
+    }, 300),
+    []
+  );
 
   const loadAccounts = useCallback(
     async (token: string) => {
@@ -251,6 +329,8 @@ export default function Dashboard() {
         : grouped.map(m => ({ ...m, hidden: m.category !== activeCategory }))
     );
   }
+
+
 
   async function loadWeek() {
     const token = localStorage.getItem("token");
@@ -548,6 +628,7 @@ export default function Dashboard() {
 
   if (!mounted) return null;
 
+
   // ✅ UI Layout
   return (
     
@@ -555,56 +636,46 @@ export default function Dashboard() {
       <AIBubbleChat 
         currentThreadId={selectedThreadId}
         currentSubject={selectedMessage?.messages?.[0]?.subject || "(No Subject)"}
-    />
+      />
       {cmdOpen && (
-        <div
-          className="fixed inset-0 z-[999] flex items-start justify-center bg-black/30 backdrop-blur-sm"
-          onClick={() => setCmdOpen(false)}
-        >
-          <div
-            className="w-[480px] mt-24 bg-white/60 backdrop-blur-xl rounded-2xl border border-white/40 shadow-2xl p-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <input
-              autoFocus
-              type="text"
-              placeholder="Search anything…"
-              className="w-full px-4 py-3 rounded-xl bg-white/70 backdrop-blur border border-white/40 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-              onChange={(e) => {
-                const q = e.target.value.toLowerCase();
-                setMessages((prev) =>
-                  prev.map((msg) => ({
-                    ...msg,
-                    hidden: q
-                      ? !msg.subject?.toLowerCase().includes(q) &&
-                        !msg.from?.toLowerCase().includes(q)
-                      : false,
-                  }))
-                );
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  setCmdOpen(false);
-                }
-              }}
-            />
-            <div className="mt-4 space-y-1 text-sm text-gray-700">
-              <div className="px-3 py-2 hover:bg-white/40 rounded-lg cursor-pointer">
-                🔍 Search emails
-              </div>
-              <div className="px-3 py-2 hover:bg-white/40 rounded-lg cursor-pointer">
-                👤 Search senders
-              </div>
-              <div className="px-3 py-2 hover:bg-white/40 rounded-lg cursor-pointer">
-                📎 Find attachments
-              </div>
-              <div className="px-3 py-2 hover:bg-white/40 rounded-lg cursor-pointer">
-                ⚙️ Open settings
-              </div>
-            </div>
-          </div>
+  <div
+    className="fixed inset-0 z-[999] flex items-start justify-center bg-black/30 backdrop-blur-sm"
+    onClick={() => setCmdOpen(false)}
+  >
+    <div
+      className="w-[480px] mt-24 bg-white/60 backdrop-blur-xl rounded-2xl border border-white/40 shadow-2xl p-4"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <input
+        autoFocus
+        type="text"
+        placeholder="Search anything…"
+        className="w-full px-4 py-3 rounded-xl bg-white/70 backdrop-blur border border-white/40 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+        onChange={debouncedSearch}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            setCmdOpen(false);
+          }
+        }}
+      />
+
+      <div className="mt-4 space-y-1 text-sm text-gray-700">
+        <div className="px-3 py-2 hover:bg-white/40 rounded-lg cursor-pointer">
+          🔍 Search emails
         </div>
-      )}
+        <div className="px-3 py-2 hover:bg-white/40 rounded-lg cursor-pointer">
+          👤 Search senders
+        </div>
+        <div className="px-3 py-2 hover:bg-white/40 rounded-lg cursor-pointer">
+          📎 Find attachments
+        </div>
+        <div className="px-3 py-2 hover:bg-white/40 rounded-lg cursor-pointer">
+          ⚙️ Open settings
+        </div>
+      </div>
+    </div>
+  </div>
+)}
   {/* LEFT PANEL - Sidebar (Fixed Width) */}
   <aside className="w-[220px] ml-2 mt-2 mb-2 flex flex-col flex-shrink-0 overflow-hidden">
   
@@ -794,22 +865,11 @@ export default function Dashboard() {
             rounded-2xl
             focus:outline-none
             focus:ring-2
-            focus:ring-blue-500/50
+            focus:ring-blue-500/50F
             transition-all
             placeholder:text-gray-500
           "
-          onChange={(e) => {
-            const q = e.target.value.toLowerCase();
-            setMessages((prev) =>
-              prev.map((msg) => ({
-                ...msg,
-                hidden: q
-                  ? !msg.subject?.toLowerCase().includes(q) &&
-                    !msg.from?.toLowerCase().includes(q)
-                  : false,
-              }))
-            );
-          }}
+          onChange={debouncedSearch}
         />
       </div>      
     </div>
@@ -902,7 +962,7 @@ export default function Dashboard() {
             .filter((msg) => !msg.hidden)
             .map((msg, idx) => (
               <div
-                key={msg.threadId || msg.id || idx}
+                key={`${msg.threadId || msg.id}-${msg._id || msg.messageId || idx}`}
                 onClick={() => {
                   const messageId =
                     selectedAccount === "ALL"

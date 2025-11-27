@@ -87,8 +87,8 @@ const EmailSchema = new mongoose.Schema(
 
     // L4 exclusion penalties applied
     exclusion: {
-      type: Number,
-      default: 0,
+      type: Object,
+      default: {},
     },
   },
   { timestamps: true }
