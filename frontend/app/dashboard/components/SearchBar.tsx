@@ -3,10 +3,10 @@
 import { Search, Command } from "lucide-react";
 
 type Props = {
-  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void;
 };
 
-export default function SearchBar({ onChange }: Props) {
+export default function SearchBar({ onKeyDown }: Props) {
   return (
     <div className="relative group w-full">
       <Search
@@ -39,7 +39,7 @@ export default function SearchBar({ onChange }: Props) {
           transition-all
           placeholder:text-gray-500
         "
-        onChange={onChange}
+        onKeyDown={onKeyDown}
       />
     </div>
   );

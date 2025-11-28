@@ -1,14 +1,13 @@
-// app/dashboard/components/layout/SearchCommandPalette.tsx
 "use client";
 import React from "react";
 
 type Props = {
   open: boolean;
   onClose: () => void;
-  onSearchChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onSearchKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void;
 };
 
-export default function SearchCommandPalette({ open, onClose, onSearchChange }: Props) {
+export default function SearchCommandPalette({ open, onClose, onSearchKeyDown }: Props) {
   if (!open) return null;
 
   return (
@@ -25,8 +24,8 @@ export default function SearchCommandPalette({ open, onClose, onSearchChange }: 
           type="text"
           placeholder="Search anything…"
           className="w-full px-4 py-3 rounded-xl bg-white/70 backdrop-blur border border-white/40 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-          onChange={onSearchChange}
           onKeyDown={(e) => {
+            onSearchKeyDown(e);
             if (e.key === "Enter") onClose();
           }}
         />
