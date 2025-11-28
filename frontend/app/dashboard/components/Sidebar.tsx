@@ -85,14 +85,21 @@ export default function Sidebar({
           <span className="text-[13.5px] font-medium">All Inbox</span>
         </div>
       </div>
-      <button
-        onClick={() => onShowDigest && onShowDigest()}
-        className="w-full flex items-center gap-2 px-3 py-2 rounded hover:bg-gray-100"
-        title="Generate AI Daily Digest"
-      >
-        <BookOpen className="w-4 h-4" />
-        <span className="text-sm">AI Daily Digest</span>
-      </button>
+      {/* AI SECTION */}
+      <div className="px-4 mt-6 mb-2">
+        <h3 className="text-[11px] font-semibold text-gray-400 uppercase tracking-widest">
+          AI Tools
+        </h3>
+
+        <div
+          onClick={() => onShowDigest && onShowDigest()}
+          className={`mt-3 flex items-center gap-3 px-3 py-2.5 cursor-pointer rounded-lg border transition-all 
+            hover:bg-gray-100 text-gray-700`}
+        >
+          <BookOpen className="w-4 h-4" />
+          <span className="text-[13.5px] font-medium">AI Daily Digest</span>
+        </div>
+      </div>
       {/* SPACER */}
       <div className="flex-1" />
 

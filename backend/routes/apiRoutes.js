@@ -183,7 +183,7 @@ router.get('/inbox/today', async (req, res) => {
 
     const emails = await Email.find({
       userId: req.user.id,
-      labelIds: { $in: ['INBOX'] },
+      labelIds: { $in: ['INBOX', 'SENT'] },
       date: { $gte: start, $lte: end },
     }).sort({ date: -1 });
 
@@ -208,7 +208,7 @@ router.get('/inbox/yesterday', async (req, res) => {
 
     const emails = await Email.find({
       userId,
-      labelIds: { $in: ['INBOX'] },
+      labelIds: { $in: ['INBOX', 'SENT'] },
       date: { $gte: start, $lte: end },
     }).sort({ date: -1 }).lean();
 
@@ -232,7 +232,7 @@ router.get('/inbox/week', async (req, res) => {
 
     const emails = await Email.find({
       userId,
-      labelIds: { $in: ['INBOX'] },
+      labelIds: { $in: ['INBOX', 'SENT'] },
       date: { $gte: start, $lte: end },
     }).sort({ date: -1 }).lean();
 
@@ -257,7 +257,7 @@ router.get("/inbox/monthly", async (req, res) => {
 
     const emails = await Email.find({
       userId,
-      labelIds: { $in: ["INBOX"] },
+      labelIds: { $in: ["INBOX", "SENT"] },
       date: { $gte: start, $lte: end },
     })
       .sort({ date: -1 })
@@ -491,6 +491,11 @@ OR
    POST /api/ai/daily-digest
    Generate AI Daily Digest for the last 24 hours
 --------------------------------------------------------- */
+/* ---------------------------------------------------------
+   POST /api/ai/daily-digest
+   Generate AI Daily Digest for the last 24 hours (smart)
+   Extracts: bills, meetings, travel, action items, priorities, attachments
+--------------------------------------------------------- */
 router.post("/ai/daily-digest", async (req, res) => {
   try {
     const userId = req.user.id;
@@ -503,10 +508,38 @@ router.post("/ai/daily-digest", async (req, res) => {
     // Fetch all emails from last 24 hours
     const emails = await Email.find({
       userId,
-      date: { $gte: start, $lte: end }
+      date: { $gte: start, $lte: end },
     })
       .sort({ date: -1 })
       .lean();
+
+    // Strict exclusion: remove newsletters, promotions, and true spam only (not socials/updates)
+    const filteredEmails = emails.filter((e) => {
+      const subject = e.subject || "";
+      const body = (e.textBody || e.body || "").toLowerCase();
+
+      const isNewsletter =
+        /newsletter|digest|update|roundup|daily digest|medium|substack|beehiiv/i.test(
+          subject
+        ) || /newsletter|digest|update|roundup|daily digest|medium|substack|beehiiv/i.test(
+          body
+        );
+
+      const isPromo =
+        /unsubscribe|offer|sale|promo|deal|discount|save|shop now/i.test(subject) ||
+        /unsubscribe|offer|sale|promo|deal|discount|save|shop now/i.test(body);
+
+      // Social/Updates often contain valid emails — DO NOT auto-exclude them
+      const isSocial = false;
+
+      // Only exclude true spam & verified newsletters/promotions
+      const isSpamLabel =
+        Array.isArray(e.labelIds) &&
+        e.labelIds.some((l) => l.toUpperCase() === "SPAM");
+
+      // Final strict-mode exclusion:
+      return !(isNewsletter || isPromo || isSpamLabel);
+    });
 
     if (!emails || emails.length === 0) {
       return res.json({
@@ -514,74 +547,252 @@ router.post("/ai/daily-digest", async (req, res) => {
       });
     }
 
+    // Helper regexes & detectors
+    const newsletterKeywords = /\b(newsletter|digest|update|roundup|daily digest|medium|substack|beehiiv)\b/i;
+    const promoKeywords = /\b(unsubscribe|offer|sale|promo|deal|discount|save|shop now)\b/i;
+    const moneyRegex = /(?:₹|\$|€|£)?\s?(\d{1,3}(?:[,.\s]\d{3})*(?:[.,]\d{1,2})?)/g;
+    const billKeywords = /\b(invoice|bill|due date|amount due|payment|paid|receipt|statement|subscription|renewal)\b/i;
+    const meetingKeywords = /\b(meeting|call|zoom|google meet|hangout|interview|appointment|agenda|schedule)\b/i;
+    const travelKeywords = /\b(flight|itinerary|ticket|boarding|reservation|hotel|booking|PNR|train|bus)\b/i;
+    const actionKeywords = /\b(please respond|please reply|action required|need your|please approve|your action|required by|kindly respond|follow up|follow-up)\b/i;
+    const urgentKeywords = /\b(urgent|asap|immediately|important|priority|attention required)\b/i;
+
+    // Basic extraction helpers
+    function extractAmounts(text) {
+      const amounts = [];
+      let m;
+      while ((m = moneyRegex.exec(text)) !== null) {
+        amounts.push(m[0].trim());
+      }
+      return Array.from(new Set(amounts)).slice(0, 3);
+    }
+
+    function extractDates(text) {
+      const patterns = [
+        /\b\d{4}-\d{2}-\d{2}\b/g,              // 2025-11-28
+        /\b\d{1,2}\/\d{1,2}\/\d{4}\b/g,        // 12/10/2025
+        /\b\d{1,2}\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b/gi, // 10 Dec
+        /\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2}\b/gi  // Dec 10
+      ];
+      const found = [];
+      for (const p of patterns) {
+        let m;
+        while ((m = p.exec(text)) !== null) found.push(m[0]);
+      }
+      return Array.from(new Set(found)).slice(0, 3);
+    }
+
+    // Analyze each email for features
+    const bills = [];
+    const meetings = [];
+    const travels = [];
+    const actions = [];
+    const priorityUnread = [];
+    const attachmentsSummary = [];
+
+    filteredEmails.forEach((e) => {
+      const from = e.from || "Unknown";
+      const subject = e.subject || "(no subject)";
+      const body = (e.textBody || e.body || "").replace(/<[^>]*>?/gm, " ");
+      const snippet = (body || "").slice(0, 1200);
+
+      const isNewsletter = newsletterKeywords.test(subject) || newsletterKeywords.test(body);
+      const isPromo = promoKeywords.test(subject) || promoKeywords.test(body);
+
+      // Skip newsletters & promos from ALL structured sections
+      if (isNewsletter || isPromo) {
+        return; // Still included in summary & top senders automatically
+      }
+
+      // Attachments
+      if (Array.isArray(e.attachments) && e.attachments.length > 0) {
+        attachmentsSummary.push({
+          emailId: e._id,
+          subject,
+          from,
+          attachments: e.attachments.map((a) => ({
+            filename: a.filename,
+            mimeType: a.mimeType,
+            storageUrl: a.storageUrl,
+          })),
+        });
+      }
+
+      // Bills detection
+      if (billKeywords.test(subject) || billKeywords.test(body)) {
+        bills.push({
+          emailId: e._id,
+          from,
+          subject,
+          amounts: extractAmounts(body).slice(0, 2),
+          possibleDates: extractDates(body),
+          snippet,
+        });
+      }
+
+      // Meetings detection
+      const hasRealDate = extractDates(body).length > 0;
+      if (hasRealDate && (meetingKeywords.test(subject) || meetingKeywords.test(body) || (Array.isArray(e.labelIds) && e.labelIds.includes("CALENDAR")))) {
+        meetings.push({
+          emailId: e._id,
+          from,
+          subject,
+          possibleDates: extractDates(body),
+          snippet,
+        });
+      }
+
+      // Travel detection
+      if (travelKeywords.test(subject) || travelKeywords.test(body)) {
+        travels.push({
+          emailId: e._id,
+          from,
+          subject,
+          snippet,
+        });
+      }
+
+      // Action items detection
+      if (extractDates(body).length > 0 && (actionKeywords.test(subject) || urgentKeywords.test(subject) || actionKeywords.test(body) || urgentKeywords.test(body))) {
+        actions.push({
+          emailId: e._id,
+          from,
+          subject,
+          possibleDates: extractDates(body),
+          snippet,
+        });
+      }
+
+      // Priority / unread
+      if ((e.unread === true || e.isUnread === true) &&
+          extractDates(body).length > 0 &&
+          (urgentKeywords.test(subject) || urgentKeywords.test(body))) {
+        priorityUnread.push({
+          emailId: e._id,
+          from,
+          subject,
+          snippet,
+        });
+      }
+    });
+
     // Build sender stats
     const senderCounts = {};
-    emails.forEach((email) => {
+    filteredEmails.forEach((email) => {
       const from = email.from || "Unknown";
       senderCounts[from] = (senderCounts[from] || 0) + 1;
     });
 
     const topSenders = Object.entries(senderCounts)
       .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
-      .map(([sender, count]) => `${sender} (${count} emails)`);
+      .slice(0, 6)
+      .map(([sender, count]) => ({ sender, count }));
 
-    // Prepare cleaned content for AI
-    const cleanedEmails = emails
+    // Build concise cleaned emails for AI prompt (limit tokens)
+    const cleanedEmails = filteredEmails
+      .slice(0, 40) // limit to first 40 emails to avoid huge prompts
       .map((e) => {
         const text = (e.textBody || e.body || "").replace(/<[^>]*>?/gm, "");
-        return `From: ${e.from}\nSubject: ${e.subject}\n${text.slice(0, 800)}`;
-      })
-      .join("\n\n---\n\n");
+        return {
+          id: e._id,
+          from: e.from,
+          subject: e.subject,
+          snippet: text.slice(0, 800),
+          date: e.date,
+        };
+      });
 
-    // AI Prompt
+    // Structured payload for AI
+    const payload = {
+      meta: {
+        timeframe: "last_24_hours",
+        totalEmails: filteredEmails.length,
+        topSenders,
+        counts: {
+          bills: bills.length,
+          meetings: meetings.length,
+          travels: travels.length,
+          actions: actions.length,
+          priorityUnread: priorityUnread.length,
+          attachments: attachmentsSummary.length,
+        },
+      },
+      examples: {
+        bills: bills.slice(0, 6),
+        meetings: meetings.slice(0, 6),
+        travels: travels.slice(0, 6),
+        actions: actions.slice(0, 8),
+        priorityUnread: priorityUnread.slice(0, 6),
+        attachments: attachmentsSummary.slice(0, 6),
+      },
+      emails: cleanedEmails,
+    };
+
+    // Build AI prompt asking for structured JSON summary + markdown summary string
     const prompt = `
-You are an AI assistant generating a DAILY DIGEST of the user's last 24 hours of emails.
+You are an assistant generating a SMART DAILY DIGEST from the following structured payload (JSON). Use the payload to:
+ - Produce a short human-readable markdown summary paragraph (3-6 sentences).
+ - The summary MUST include concrete details: dates (e.g., "12/12/25"), number of emails, how many meetings/bills/actions were detected, sender names, and any urgent items.
+ - If meetings exist, explicitly mention the meeting subject and the detected date(s).
+ - If actions exist, describe at least one of them briefly.
+ - If no items exist for a section, explicitly say so (e.g., "No bills or travel plans were detected.").
+ - Produce 4-8 bullet highlights (short).
+ - Produce suggested "action items" extracted from actions and priorityUnread.
+ - Produce a small table of top senders.
+ - Include sections: Bills, Meetings, Travel, Attachments, Actions.
+ - Mark items that look urgent.
 
-Summarize the emails using:
-- A short overview paragraph
-- 3–7 bullet highlights
-- Key senders
-- Deadlines, bills due, meeting details
-- Separate sections for: Work, Personal, Finance, Others
-
-Emails:
-${cleanedEmails}
-
-Top Senders:
-${topSenders.join("\n")}
-
-Return ONLY JSON:
-
+Return ONLY VALID JSON with this exact shape:
 {
-  "summary": "Markdown summary here"
+  "summary": "Markdown summary string",
+  "highlights": ["..."],
+  "actions": [{"text":"...", "emailId":"...", "due":"optional date"}],
+  "topSenders": [{"sender":"...","count":N}],
+  "sections": {
+    "bills": [...],
+    "meetings": [...],
+    "travel": [...],
+    "attachments": [...],
+    "priorityUnread": [...]
+  }
 }
+
+Payload:
+${JSON.stringify(payload, null, 2)}
 `;
 
+    // Ask model
     const geminiRes = await model.generateContent(prompt);
-    let text = geminiRes.response.text().trim();
+    let text = (await geminiRes.response.text()).trim();
 
-    // Clean JSON
-    text = text
-      .replace(/```json/gi, "")
-      .replace(/```/g, "")
-      .trim();
+    // Clean fences and backticks
+    text = text.replace(/```json/gi, "").replace(/```/g, "").trim();
 
-    let summaryObj;
+    // Try parse JSON
+    let result;
     try {
-      summaryObj = JSON.parse(text);
+      result = JSON.parse(text);
     } catch (err) {
-      const match = text.match(/"summary"\s*:\s*"([\s\S]*?)"/);
-      if (match) summaryObj = { summary: match[1] };
-      else {
-        return res.status(500).json({
-          error: "Invalid AI digest JSON",
-          raw: text,
-        });
+      // Attempt to extract JSON substring
+      const jsonMatch = text.match(/\{[\s\S]*\}$/);
+      if (jsonMatch) {
+        try {
+          result = JSON.parse(jsonMatch[0]);
+        } catch (err2) {
+          console.error("Failed to parse JSON from AI:", err2);
+        }
       }
     }
 
-    res.json(summaryObj);
+    if (!result) {
+      // As a fallback, return a simple summary string
+      return res.json({
+        summary:
+          "AI returned non-JSON output. Raw response:\n\n" + text.slice(0, 400),
+      });
+    }
+
+    return res.json(result);
   } catch (err) {
     console.error("AI Daily Digest error:", err);
     res.status(500).json({ error: "Failed to generate daily digest" });
