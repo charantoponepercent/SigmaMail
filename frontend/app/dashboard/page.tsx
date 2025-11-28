@@ -19,6 +19,7 @@ import Sidebar from "./components/Sidebar";
 import ThreadPanel from "./components/ThreadPanel";
 import { formatDate, cleanSubject, getAvatarInitial } from "./components/utils/mailUtils";
 import { useThreadLoader } from "./hooks/useThreadLoader";
+import DigestModal from "./components/DigestModal";
 
 type DashboardUser = { id: string; name: string };
 type DashboardAccount = { _id: string; email: string };
@@ -123,6 +124,9 @@ export default function Dashboard() {
   // FILTER BAR STATE
   const [activeFilter, setActiveFilter] = useState("TODAY");
   const [activeCategory, setActiveCategory] = useState("All");
+  const [digestOpen, setDigestOpen] = useState(false);
+  const [digestText, setDigestText] = useState("");
+  const [digestLoading, setDigestLoading] = useState(false);
 
 
   const {
@@ -194,6 +198,31 @@ export default function Dashboard() {
     window.open(url, "_blank", "width=800,height=700");
   }
 
+  async function showDigest() {
+    setDigestOpen(true);
+    setDigestLoading(true);
+    setDigestText("");
+
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API_BASE}/api/ai/daily-digest`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      const data = await res.json();
+      if (data.summary) {
+        setDigestText(data.summary);
+      } else {
+        setDigestText("No digest generated.");
+      }
+    } catch (err) {
+      console.error("Digest error:", err);
+      setDigestText("Failed to generate daily digest.");
+    } finally {
+      setDigestLoading(false);
+    }
+  }
 
   async function disconnectAccount(email: string) {
     const token = localStorage.getItem("token");
@@ -262,6 +291,7 @@ export default function Dashboard() {
         logout={logout}
         setShowDialog={setShowDialog}
         setAccountToDisconnect={setAccountToDisconnect}
+        onShowDigest={showDigest}
       />
 
       {/* MAIN CONTENT AREA */}
@@ -302,6 +332,13 @@ export default function Dashboard() {
           onClose={closeThread}
         />
       </div>
+
+      <DigestModal
+        open={digestOpen}
+        onClose={() => setDigestOpen(false)}
+        digestText={digestText}
+        loading={digestLoading}
+      />
 
       <DisconnectDialog
         isOpen={showDialog}

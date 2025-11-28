@@ -8,6 +8,7 @@ import {
   Settings,
   LogOut,
   EllipsisVertical,
+  BookOpen,
 } from "lucide-react";
 
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
@@ -22,6 +23,7 @@ type Props = {
   logout: () => void;
   setShowDialog: (v: boolean) => void;
   setAccountToDisconnect: (email: string | null) => void;
+  onShowDigest?: () => void;
 };
 
 export default function Sidebar({
@@ -34,6 +36,7 @@ export default function Sidebar({
   logout,
   setShowDialog,
   setAccountToDisconnect,
+  onShowDigest,
 }: Props) {
   return (
     <aside className="w-[220px] ml-2 mt-2 mb-2 flex flex-col flex-shrink-0 overflow-hidden">
@@ -82,7 +85,14 @@ export default function Sidebar({
           <span className="text-[13.5px] font-medium">All Inbox</span>
         </div>
       </div>
-
+      <button
+        onClick={() => onShowDigest && onShowDigest()}
+        className="w-full flex items-center gap-2 px-3 py-2 rounded hover:bg-gray-100"
+        title="Generate AI Daily Digest"
+      >
+        <BookOpen className="w-4 h-4" />
+        <span className="text-sm">AI Daily Digest</span>
+      </button>
       {/* SPACER */}
       <div className="flex-1" />
 

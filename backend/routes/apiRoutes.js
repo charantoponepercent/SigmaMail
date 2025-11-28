@@ -487,6 +487,106 @@ OR
   }
 });
 
+/* ---------------------------------------------------------
+   POST /api/ai/daily-digest
+   Generate AI Daily Digest for the last 24 hours
+--------------------------------------------------------- */
+router.post("/ai/daily-digest", async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    // Time window: last 24 hours
+    const end = new Date();
+    const start = new Date();
+    start.setDate(start.getDate() - 1);
+
+    // Fetch all emails from last 24 hours
+    const emails = await Email.find({
+      userId,
+      date: { $gte: start, $lte: end }
+    })
+      .sort({ date: -1 })
+      .lean();
+
+    if (!emails || emails.length === 0) {
+      return res.json({
+        summary: "No emails received in the last 24 hours.",
+      });
+    }
+
+    // Build sender stats
+    const senderCounts = {};
+    emails.forEach((email) => {
+      const from = email.from || "Unknown";
+      senderCounts[from] = (senderCounts[from] || 0) + 1;
+    });
+
+    const topSenders = Object.entries(senderCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([sender, count]) => `${sender} (${count} emails)`);
+
+    // Prepare cleaned content for AI
+    const cleanedEmails = emails
+      .map((e) => {
+        const text = (e.textBody || e.body || "").replace(/<[^>]*>?/gm, "");
+        return `From: ${e.from}\nSubject: ${e.subject}\n${text.slice(0, 800)}`;
+      })
+      .join("\n\n---\n\n");
+
+    // AI Prompt
+    const prompt = `
+You are an AI assistant generating a DAILY DIGEST of the user's last 24 hours of emails.
+
+Summarize the emails using:
+- A short overview paragraph
+- 3–7 bullet highlights
+- Key senders
+- Deadlines, bills due, meeting details
+- Separate sections for: Work, Personal, Finance, Others
+
+Emails:
+${cleanedEmails}
+
+Top Senders:
+${topSenders.join("\n")}
+
+Return ONLY JSON:
+
+{
+  "summary": "Markdown summary here"
+}
+`;
+
+    const geminiRes = await model.generateContent(prompt);
+    let text = geminiRes.response.text().trim();
+
+    // Clean JSON
+    text = text
+      .replace(/```json/gi, "")
+      .replace(/```/g, "")
+      .trim();
+
+    let summaryObj;
+    try {
+      summaryObj = JSON.parse(text);
+    } catch (err) {
+      const match = text.match(/"summary"\s*:\s*"([\s\S]*?)"/);
+      if (match) summaryObj = { summary: match[1] };
+      else {
+        return res.status(500).json({
+          error: "Invalid AI digest JSON",
+          raw: text,
+        });
+      }
+    }
+
+    res.json(summaryObj);
+  } catch (err) {
+    console.error("AI Daily Digest error:", err);
+    res.status(500).json({ error: "Failed to generate daily digest" });
+  }
+});
 
 export default router;
 
