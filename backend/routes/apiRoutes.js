@@ -272,7 +272,10 @@ router.post("/ai/summarize-thread", async (req, res) => {
     // Redis cache
     const cacheKey = `thread_summary:${threadId}`;
     const cached = await redis.get(cacheKey);
-    if (cached) return res.json(JSON.parse(cached));
+    if (cached) {
+      // console.log("cached hit");
+      return res.json(JSON.parse(cached));
+    }
 
     // -------------------------
     // CLEAN / FORMAT THREAD

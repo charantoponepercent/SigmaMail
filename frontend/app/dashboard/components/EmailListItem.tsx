@@ -76,7 +76,7 @@ export default function EmailListItem({
         <div className="flex items-center gap-2 flex-wrap">
           {/* Category badge */}
           <span
-            className={`px-2 py-0.5 text-[10px] font-medium rounded ${
+            className={`px-2 py-1.5 text-[10px] font-medium rounded-2xl ${
               msg.category === "Work"
                 ? "bg-blue-100 text-blue-700"
                 : msg.category === "Finance"
