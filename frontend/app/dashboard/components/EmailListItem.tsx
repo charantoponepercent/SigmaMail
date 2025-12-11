@@ -109,10 +109,19 @@ export default function EmailListItem({
           <div className="flex items-center gap-1.5 text-xs rounded-xl bg-gray-50 border px-3 py-1 text-gray-500">
             <span className="w-1 h-1 rounded-full bg-purple-500"></span>
             <span className="max-w-[200px] truncate">
-              {(msg.accountEmail || msg.to || "Unknown")
-                .replace(/\"/g, "")
-                .split("<")[0]
-                .trim()}
+              {(() => {
+                const raw = (msg.accountEmail || msg.to || "").replace(/"/g, "");
+
+                // 1) Try to extract <email>
+                const angleMatch = raw.match(/<([^>]+)>/);
+                if (angleMatch) return angleMatch[1];
+
+                // 2) Try to extract plain email
+                const emailMatch = raw.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+                if (emailMatch) return emailMatch[0];
+
+                return "Unknown";
+              })()}
             </span>
           </div>
 

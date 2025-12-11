@@ -29,7 +29,7 @@ app.get('/', (req, res) => {
 });
 
 app.use("/authe", userAuthRoutes);
-app.use("/auth", authRoutes);
+app.use("/auth", authRoutes); // ✅
 app.use("/api", apiRoutes);
 app.use("/test", testEmbedding);
 app.use("/search_api", searchRoutes);
