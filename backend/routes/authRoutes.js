@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 import { google } from "googleapis";
 import User from "../models/User.js";
 import EmailAccount from "../models/EmailAccount.js";
+import { enqueueInitialSync } from "../queues/gmailInitialSync.queue.js";
 
 dotenv.config();
 const router = express.Router();
@@ -106,16 +107,27 @@ router.get("/google/callback", async (req, res) => {
       scopes: SCOPES,
     };
 
-    // If already connected, update; else insert
+    // 🔎 Check if this Gmail account already exists for the user
     const existing = await EmailAccount.findOne({
       userId: appUser._id,
       email: gmailAddress,
     });
 
+    let account;
+
     if (existing) {
-      await EmailAccount.updateOne({ _id: existing._id }, accountData);
+      account = await EmailAccount.findOneAndUpdate(
+        { _id: existing._id },
+        accountData,
+        { new: true }
+      );
     } else {
-      await EmailAccount.create(accountData);
+      account = await EmailAccount.create(accountData);
+    }
+
+    // 🔥 Trigger initial Gmail sync in background (BullMQ)
+    if (!account.initialSyncDone) {
+      await enqueueInitialSync(account._id);
     }
 
     console.log(`✅ Gmail connected: ${gmailAddress} → User: ${appUser.email}`);

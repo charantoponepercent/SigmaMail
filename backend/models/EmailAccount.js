@@ -9,6 +9,8 @@ const emailAccountSchema = new mongoose.Schema({
   refreshToken: String,     // <--- encrypt in production!
   tokenExpiry: Date,
   scopes: [String],
+  initialSyncDone: { type: Boolean, default: false },
+  lastHistoryId: { type: String },
   createdAt: { type: Date, default: Date.now },
 }, { timestamps: true });
 

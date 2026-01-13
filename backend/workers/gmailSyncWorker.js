@@ -42,7 +42,7 @@ async function syncAccount(account) {
   }
 }
 
-async function syncSingleMessage(gmail, messageId, account) {
+export async function syncSingleMessage(gmail, messageId, account) {
   // Use upsert to avoid duplicates in race conditions
   const emailFilter = { messageId, accountId: account._id };
 

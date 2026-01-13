@@ -7,6 +7,7 @@ import apiRoutes from './routes/apiRoutes.js';
 import userAuthRoutes from './routes/userAuthRoutes.js';
 import testEmbedding from "./routes/testEmbedding.js";
 import searchRoutes from "./routes/search.js";
+import "./config/db.js";
 
 
 dotenv.config();
@@ -18,10 +19,6 @@ app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ limit: "10mb", extended: true }));
 app.use(cors());
 
-// Connect to MongoDB
-mongoose.connect(process.env.MONGO_URI)
-  .then(() => console.log('✅ MongoDB connected'))
-  .catch(err => console.error('❌ MongoDB error:', err));
 
 // Test route
 app.get('/', (req, res) => {
