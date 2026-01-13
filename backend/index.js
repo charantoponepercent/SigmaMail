@@ -32,7 +32,7 @@ app.use("/auth", authRoutes); // ✅
 app.use("/api", apiRoutes);
 app.use("/test", testEmbedding);
 app.use("/search_api", searchRoutes);
-app.use("/api/webhooks", gmailWebhook);
+app.use("/api-push/webhooks", gmailWebhook);
 
 
 const PORT = process.env.PORT || 4000;
