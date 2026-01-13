@@ -5,6 +5,7 @@ import { google } from "googleapis";
 import User from "../models/User.js";
 import EmailAccount from "../models/EmailAccount.js";
 import { enqueueInitialSync } from "../queues/gmailInitialSync.queue.js";
+import { startGmailWatch } from "../services/gmailWatch.service.js";
 
 dotenv.config();
 const router = express.Router();
@@ -123,6 +124,14 @@ router.get("/google/callback", async (req, res) => {
       );
     } else {
       account = await EmailAccount.create(accountData);
+    }
+
+    // 🔔 Register Gmail Push Notification (Pub/Sub)
+    try {
+      await startGmailWatch(account);
+      console.log("📡 Gmail watch registered for", account.email);
+    } catch (err) {
+      console.error("❌ Failed to register Gmail watch:", err.message);
     }
 
     // 🔥 Trigger initial Gmail sync in background (BullMQ)

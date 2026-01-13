@@ -143,7 +143,6 @@ router.get('/inbox/today', async (req, res) => {
 
     const emails = await Email.find({
       userId: req.user.id,
-      labelIds: { $in: ['INBOX', 'SENT'] },
       date: { $gte: start, $lte: end },
     }).sort({ date: -1 });
 
@@ -168,7 +167,6 @@ router.get('/inbox/yesterday', async (req, res) => {
 
     const emails = await Email.find({
       userId,
-      labelIds: { $in: ['INBOX', 'SENT'] },
       date: { $gte: start, $lte: end },
     }).sort({ date: -1 }).lean();
 
@@ -192,7 +190,6 @@ router.get('/inbox/week', async (req, res) => {
 
     const emails = await Email.find({
       userId,
-      labelIds: { $in: ['INBOX', 'SENT'] },
       date: { $gte: start, $lte: end },
     }).sort({ date: -1 }).lean();
 
@@ -217,7 +214,6 @@ router.get("/inbox/monthly", async (req, res) => {
 
     const emails = await Email.find({
       userId,
-      labelIds: { $in: ["INBOX", "SENT"] },
       date: { $gte: start, $lte: end },
     })
       .sort({ date: -1 })

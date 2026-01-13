@@ -8,6 +8,8 @@ import userAuthRoutes from './routes/userAuthRoutes.js';
 import testEmbedding from "./routes/testEmbedding.js";
 import searchRoutes from "./routes/search.js";
 import "./config/db.js";
+import gmailWebhook from "./routes/gmailWebhook.js";
+
 
 
 dotenv.config();
@@ -30,7 +32,7 @@ app.use("/auth", authRoutes); // ✅
 app.use("/api", apiRoutes);
 app.use("/test", testEmbedding);
 app.use("/search_api", searchRoutes);
-
+app.use("/api/webhooks", gmailWebhook);
 
 
 const PORT = process.env.PORT || 4000;
