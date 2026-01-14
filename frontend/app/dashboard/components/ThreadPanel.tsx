@@ -22,7 +22,7 @@ export default function ThreadPanel({
 }: Props) {
   return (
     <section
-      className={`bg-white mt-1 mb-3 rounded-xl border border-gray-100 overflow-hidden transition-all duration-300 ease-in-out w-[880px]`}
+      className={`bg-white mt-1 mb-3 rounded-xl border border-gray-100 overflow-hidden transition-all duration-300 ease-in-out flex-1 min-w-0`}
     >
       <div className="h-full overflow-y-auto">
         {loadingThread ? (

@@ -361,7 +361,7 @@ export default function Dashboard() {
 
       {/* MAIN CONTENT AREA */}
       <div className="flex-1 m-1 flex overflow-hidden">
-        <section className="border mt-1 mr-0.5 mb-3 border-gray-100 bg-white flex flex-col overflow-x-hidden rounded-xl w-[470px]">
+        <section className="border mt-1 mr-0.5 mb-3 border-gray-100 bg-white flex flex-col overflow-x-hidden rounded-xl flex-shrink-0 w-[510px]">
           <HeaderBar onSearchKeyDown={onSearchKeyDown} />
           {/* Filter Dropdown */}
           <DropFilterBar

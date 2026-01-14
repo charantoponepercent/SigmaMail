@@ -163,13 +163,13 @@ export default function ThreadViewer({ thread, onClose, onPrev, onNext }: Thread
 
         {/* ACTION BUTTONS */}
         <div className="flex border rounded-xl p-1 items-center gap-2">
-          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-md">
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 cursor-pointer rounded-md">
             <X className="w-4 h-4" />
           </button>
-          <button onClick={onPrev} className="p-2 hover:bg-gray-100 rounded-md">
+          <button onClick={onPrev} className="p-2 hover:bg-gray-100 cursor-pointer rounded-md">
             <ChevronLeft className="w-4 h-4" />
           </button>
-          <button onClick={onNext} className="p-2 hover:bg-gray-100 rounded-md">
+          <button onClick={onNext} className="p-2 hover:bg-gray-100 cursor-pointer rounded-md">
             <ChevronRight className="w-4 h-4" />
           </button>
         </div>
