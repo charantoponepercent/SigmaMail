@@ -130,6 +130,11 @@ export default function Dashboard() {
   const sseRef = useRef<EventSource | null>(null);
   const activeFilterRef = useRef(activeFilter);
 
+  // Added new mail notification state and timer ref
+  const [newMailCount, setNewMailCount] = useState(0);
+  const [showNewTag, setShowNewTag] = useState(false);
+  const newMailTimerRef = useRef<NodeJS.Timeout | null>(null);
+
   useEffect(() => {
     activeFilterRef.current = activeFilter;
   }, [activeFilter]);
@@ -190,6 +195,17 @@ export default function Dashboard() {
         console.log("📦 SSE parsed payload:", payload);
 
         if (payload.type === "NEW_EMAIL") {
+          setNewMailCount((c) => c + 1);
+          setShowNewTag(true);
+
+          if (newMailTimerRef.current) {
+            clearTimeout(newMailTimerRef.current);
+          }
+          newMailTimerRef.current = setTimeout(() => {
+            setShowNewTag(false);
+            setNewMailCount(0);
+          }, 2 * 60 * 1000); // 2 minutes
+
           console.log("✅ SSE NEW_EMAIL accepted, triggering inbox refresh");
           console.log("🆕 SSE NEW_EMAIL received → FORCE inbox reload");
 
@@ -327,6 +343,10 @@ export default function Dashboard() {
         sseRef.current.close();
         sseRef.current = null;
       }
+      if (newMailTimerRef.current) {
+        clearTimeout(newMailTimerRef.current);
+        newMailTimerRef.current = null;
+      }
     };
   }, []);
 
@@ -372,6 +392,13 @@ export default function Dashboard() {
             sourceMessages={sourceMessages}
             setMessages={setMessages}
           />
+
+          {showNewTag && (
+            <div className="mx-3 my-2 flex items-center gap-2 rounded-lg bg-blue-50 px-3 py-1 text-sm text-blue-700">
+              <span className="inline-flex h-2 w-2 rounded-full bg-blue-600" />
+              <span>{newMailCount} new mail{newMailCount > 1 ? "s" : ""}</span>
+            </div>
+          )}
 
           {/* Email List */}
           <EmailList

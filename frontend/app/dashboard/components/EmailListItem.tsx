@@ -1,5 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+
 "use client";
+
+import { useEffect, useState } from "react";
 
 import { Paperclip } from "lucide-react";
 
@@ -20,6 +23,28 @@ export default function EmailListItem({
   getAvatarInitial,
   formatDate,
 }: Props) {
+  const [showNew, setShowNew] = useState(() => {
+    if (!msg?.createdAt) return false;
+    const created = new Date(msg.createdAt).getTime();
+    return Date.now() - created < 2 * 60 * 1000; // 2 minutes
+  });
+
+  useEffect(() => {
+    if (!showNew) return;
+
+    const remaining =
+      2 * 60 * 1000 -
+      (Date.now() - new Date(msg.createdAt).getTime());
+
+    if (remaining <= 0) {
+      setShowNew(false);
+      return;
+    }
+
+    const t = setTimeout(() => setShowNew(false), remaining);
+    return () => clearTimeout(t);
+  }, [showNew, msg.createdAt]);
+
   return (
     <div
       key={msg.threadId || msg.id}
@@ -41,8 +66,6 @@ export default function EmailListItem({
         {/* Top Row */}
         <div className="flex items-center justify-between gap-2 mb-1">
           <div className="flex items-center gap-2 min-w-0 flex-1">
-            
-
             <h3
               className={`text-[14px] truncate ${
                 msg.isRead === false
@@ -52,6 +75,11 @@ export default function EmailListItem({
             >
               {msg.from?.split("<")[0].trim() || "Unknown Sender"}
             </h3>
+            {showNew && (
+              <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-blue-600 text-white flex-shrink-0">
+                NEW
+              </span>
+            )}
             {msg.priority && (
               <span className="px-2 py-0.5 text-[10px] font-medium text-purple-700 bg-purple-100 rounded-full flex-shrink-0">
                 Priority
