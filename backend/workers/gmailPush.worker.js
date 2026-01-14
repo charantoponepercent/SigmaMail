@@ -1,13 +1,23 @@
 import "dotenv/config";
 import "../config/db.js";
-import { Worker } from "bullmq";
+import BullMQ from "bullmq";
 import { redis } from "../utils/redis.js";
 import { google } from "googleapis";
 import EmailAccount from "../models/EmailAccount.js";
 import { getAuthorizedClientForAccount } from "../utils/googleClient.js";
 import { syncSingleMessage } from "./gmailSyncWorker.js";
+import Email from "../models/Email.js";
+import Thread from "../models/Thread.js";
+
+const { Worker, Queue } = BullMQ;
+
+// QueueScheduler is not required in BullMQ v4+
+const sseQueue = new Queue("sse-events", { connection: redis });
+
+console.log("🧭 QueueScheduler active for sse-events");
 
 console.log("📡 Gmail Push Worker running");
+
 
 new Worker(
   "gmail-push",
@@ -43,22 +53,118 @@ new Worker(
     const historyRes = await gmail.users.history.list({
       userId: "me",
       startHistoryId,
-      historyTypes: ["messageAdded"],
+      historyTypes: ["messageAdded", "labelAdded", "labelRemoved"],
     });
 
     const histories = historyRes.data.history || [];
+    const labelEvents = [];
     const messageIds = new Set();
 
     for (const h of histories) {
+      // New messages
       for (const m of h.messagesAdded || []) {
         messageIds.add(m.message.id);
+      }
+
+      // Label added (e.g. UNREAD, STARRED)
+      for (const la of h.labelsAdded || []) {
+        labelEvents.push({
+          messageId: la.message.id,
+          labels: la.labelIds,
+          type: "added",
+        });
+      }
+
+      // Label removed (e.g. UNREAD removed => read)
+      for (const lr of h.labelsRemoved || []) {
+        labelEvents.push({
+          messageId: lr.message.id,
+          labels: lr.labelIds,
+          type: "removed",
+        });
       }
     }
 
     console.log("📥 New messages:", messageIds.size);
+    console.log("🧪 Preparing SSE jobs for user:", account.userId.toString());
+    if (labelEvents.length > 0) {
+      console.log("🏷️ Label events:", labelEvents);
+    }
+
+    // 🔁 Sync read / unread state + thread counters
+    for (const ev of labelEvents) {
+      if (!ev.labels.includes("UNREAD")) continue;
+
+      const isRead = ev.type === "removed";
+
+      const email = await Email.findOneAndUpdate(
+        { messageId: ev.messageId },
+        { $set: { isRead } },
+        { new: true }
+      );
+
+      if (!email) continue;
+
+      const delta = isRead ? -1 : 1;
+
+      await Thread.updateOne(
+        { threadId: email.threadId, accountId: email.accountId },
+        {
+          $inc: { unreadCount: delta },
+        }
+      );
+
+      // normalize thread state (no negatives)
+      await Thread.updateOne(
+        {
+          threadId: email.threadId,
+          accountId: email.accountId,
+          unreadCount: { $lte: 0 },
+        },
+        {
+          $set: { unreadCount: 0, hasUnread: false },
+        }
+      );
+
+      await Thread.updateOne(
+        {
+          threadId: email.threadId,
+          accountId: email.accountId,
+          unreadCount: { $gt: 0 },
+        },
+        {
+          $set: { hasUnread: true },
+        }
+      );
+
+      console.log(
+        `📌 Email ${ev.messageId} marked as ${isRead ? "READ" : "UNREAD"} (thread updated)`
+      );
+      // 🔔 Queue SSE event for read/unread change
+      await sseQueue.add("EMAIL_READ_STATE", {
+        userId: email.userId.toString(),
+        data: {
+          emailId: email._id,
+          threadId: email.threadId,
+          isRead,
+        },
+      });
+      console.log("📤 SSE job queued → EMAIL_READ_STATE for user:", email.userId.toString());
+    }
 
     for (const messageId of messageIds) {
-      await syncSingleMessage(gmail, messageId, account);
+      const emailDoc = await syncSingleMessage(gmail, messageId, account);
+
+      if (!emailDoc) continue;
+
+      console.log("📤 SSE emit → inbox (NEW_EMAIL)", emailDoc.messageId);
+
+      await sseQueue.add("NEW_EMAIL", {
+        userId: account.userId.toString(),
+        data: emailDoc,
+      });
+      console.log("📤 SSE job queued → NEW_EMAIL for user:", account.userId.toString());
+      console.log("🧱 BullMQ job added → sse-events NEW_EMAIL");
     }
 
     // ✅ Advance cursor only AFTER processing

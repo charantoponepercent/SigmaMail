@@ -11,6 +11,8 @@ const ThreadSchema = new mongoose.Schema(
     subject: String,
     snippet: String,
     lastMessageDate: Date,
+    unreadCount: { type: Number, default: 0 },
+    hasUnread: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

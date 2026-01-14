@@ -3,7 +3,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { API_BASE } from "@/lib/api";
 import DisconnectDialog from "@/components/DisconnectDialog";
@@ -127,7 +127,12 @@ export default function Dashboard() {
   const [digestOpen, setDigestOpen] = useState(false);
   const [digestText, setDigestText] = useState("");
   const [digestLoading, setDigestLoading] = useState(false);
+  const sseRef = useRef<EventSource | null>(null);
+  const activeFilterRef = useRef(activeFilter);
 
+  useEffect(() => {
+    activeFilterRef.current = activeFilter;
+  }, [activeFilter]);
 
   const {
     loadToday,
@@ -172,14 +177,64 @@ export default function Dashboard() {
     }
     const parsed = JSON.parse(userData) as DashboardUser;
     setUser(parsed);
+    // 🔔 Start SSE inbox stream
+    if (!sseRef.current) {
+      const es = new EventSource(
+        `${API_BASE}/api-sse/sse/inbox?userId=${parsed.id}`
+      );
+      console.log("🟢 SSE connected for user:", parsed.id);
+
+      es.onmessage = (event) => {
+        console.log("📨 SSE raw event:", event.data);
+        const payload = JSON.parse(event.data);
+        console.log("📦 SSE parsed payload:", payload);
+
+        if (payload.type === "NEW_EMAIL") {
+          console.log("✅ SSE NEW_EMAIL accepted, triggering inbox refresh");
+          console.log("🆕 SSE NEW_EMAIL received → FORCE inbox reload");
+
+          // 🔥 CRITICAL FIX: force fresh fetch, do NOT rely on old closures
+          if (activeFilterRef.current === "TODAY") {
+            loadToday(true);
+          } else if (activeFilterRef.current === "YESTERDAY") {
+            loadYesterday(true);
+          } else if (activeFilterRef.current === "WEEK") {
+            loadWeek(true);
+          } else if (activeFilterRef.current === "MONTHLY") {
+            loadMonthly(true);
+          }
+        }
+
+        if (payload.type === "EMAIL_READ_STATE") {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m._id === payload.data.emailId || m.id === payload.data.emailId
+                ? { ...m, isRead: payload.data.isRead }
+                : m
+            )
+          );
+
+          setSourceMessages((prev) =>
+            prev.map((m) =>
+              m._id === payload.data.emailId || m.id === payload.data.emailId
+                ? { ...m, isRead: payload.data.isRead }
+                : m
+            )
+          );
+        }
+      };
+
+      sseRef.current = es;
+    }
     loadAccounts(token);
   }, [router, loadAccounts]);
 
-  // Filter-based inbox loading
   useEffect(() => {
     if (!selectedAccount) return;
+  
+    console.log("🔄 Inbox fetch triggered:", activeFilter);
     setLoadingMessages(true);
-
+  
     if (activeFilter === "TODAY") {
       loadToday();
     } else if (activeFilter === "YESTERDAY") {
@@ -266,8 +321,18 @@ export default function Dashboard() {
     return () => window.removeEventListener("keydown", handleKey);
   }, []);
 
+  useEffect(() => {
+    return () => {
+      if (sseRef.current) {
+        sseRef.current.close();
+        sseRef.current = null;
+      }
+    };
+  }, []);
 
   if (!mounted) return null;
+
+  console.log("🖥️ Dashboard render, messages:", messages.length);
   // ✅ UI Layout
   return (
     

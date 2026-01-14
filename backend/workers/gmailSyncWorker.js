@@ -12,6 +12,7 @@ import { parsePayloadDeep, fixBase64, fetchAttachmentData } from '../utils/email
 import {generateEmbedding} from '../utils/embedding.js';
 import { classifyEmailFull } from "../classification/classificationEngine.js";
 import cloudinary from '../config/cloudinary.js'; // <-- ADDED
+import { inboxEvents } from "../events/inboxEvents.js";
 
 
 // Main Sync Function
@@ -45,8 +46,11 @@ async function syncAccount(account) {
 export async function syncSingleMessage(gmail, messageId, account) {
   // Use upsert to avoid duplicates in race conditions
   const emailFilter = { messageId, accountId: account._id };
+  const existed = await Email.exists(emailFilter);
 
   const full = await gmail.users.messages.get({ userId: 'me', id: messageId, format: 'full' });
+  const labels = full.data.labelIds || [];
+  const isRead = !labels.includes("UNREAD");
   const payload = full.data.payload || {};
   const { htmlBody, textBody, inlineParts, attachmentParts } = parsePayloadDeep(payload);
 
@@ -351,7 +355,9 @@ export async function syncSingleMessage(gmail, messageId, account) {
       hasAttachments: uploadedAttachments.length > 0,
       embedding: embeddingVector,
 
-      labelIds: full.data.labelIds || [],
+      labelIds: labels,
+      isRead: isRead,
+
       snippet: full.data.snippet || '',
       hasInlineImages: inlineParts.length > 0,
 
@@ -366,11 +372,33 @@ export async function syncSingleMessage(gmail, messageId, account) {
     { upsert: true, new: true }
   );
 
+  // 🔔 Emit SSE event for new email
+  if (!existed) {
+    inboxEvents.emit("inbox", {
+      type: "NEW_EMAIL",
+      userId: account.userId.toString(),
+      data: {
+        emailId: emailDoc._id,
+        threadId: emailDoc.threadId,
+        subject: emailDoc.subject,
+        from: emailDoc.from,
+        date: emailDoc.date,
+        isRead: emailDoc.isRead,
+      },
+    });
+  }
+
   await updateThread(account, emailDoc);
+  return emailDoc;
 }
 
 async function updateThread(account, emailDoc) {
-  let thread = await Thread.findOne({ threadId: emailDoc.threadId, accountId: account._id });
+  let thread = await Thread.findOne({
+    threadId: emailDoc.threadId,
+    accountId: account._id,
+  });
+
+  const isUnread = !emailDoc.isRead;
 
   if (!thread) {
     await Thread.create({
@@ -382,14 +410,27 @@ async function updateThread(account, emailDoc) {
       subject: emailDoc.subject,
       snippet: emailDoc.snippet,
       lastMessageDate: emailDoc.date,
+      unreadCount: isUnread ? 1 : 0,
+      hasUnread: isUnread,
     });
     return;
   }
 
-  thread.messageIds.push(emailDoc.messageId);
+  // Avoid duplicate messageIds
+  if (!thread.messageIds.includes(emailDoc.messageId)) {
+    thread.messageIds.push(emailDoc.messageId);
+
+    if (isUnread) {
+      thread.unreadCount = (thread.unreadCount || 0) + 1;
+      thread.hasUnread = true;
+    }
+  }
+
   thread.lastMessageDate = emailDoc.date;
   thread.snippet = emailDoc.snippet;
-  thread.participants = Array.from(new Set([...thread.participants, emailDoc.from, emailDoc.to]));
+  thread.participants = Array.from(
+    new Set([...thread.participants, emailDoc.from, emailDoc.to])
+  );
 
   await thread.save();
 }

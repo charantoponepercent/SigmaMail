@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import { API_BASE } from "@/lib/api";
 
 export function useInboxLoader({
@@ -10,6 +10,7 @@ export function useInboxLoader({
   setLoadingMessages,
   activeCategory,
 }) {
+
   // Helper to process inbox responses (group by thread)
   const processEmails = useCallback(
     (emails: any[]) => {
@@ -46,7 +47,7 @@ export function useInboxLoader({
 
   // Generic loader
   const loadInbox = useCallback(
-    async (endpoint: string) => {
+    async (endpoint: string, force = false) => {
       setLoadingMessages(true);
 
       try {
@@ -60,11 +61,28 @@ export function useInboxLoader({
 
         const grouped = processEmails(emails);
 
+        if (force) {
+          console.log("🔥 FORCE inbox replace:", grouped.length);
+          setSourceMessages(grouped);
+          setMessages(
+            activeCategory === "All"
+              ? grouped
+              : grouped.map((msg: any) => ({
+                  ...msg,
+                  hidden: msg.category !== activeCategory,
+                }))
+          );
+          return;
+        }
+
+        // Source of truth
         setSourceMessages(grouped);
+
+        // Apply category filtering
         setMessages(
           activeCategory === "All"
             ? grouped
-            : grouped.map((msg) => ({
+            : grouped.map((msg: any) => ({
                 ...msg,
                 hidden: msg.category !== activeCategory,
               }))
@@ -79,12 +97,12 @@ export function useInboxLoader({
   );
 
   // Public loaders
-  const loadToday = () => loadInbox("today");
-  const loadYesterday = () => loadInbox("yesterday");
-  const loadWeek = () => loadInbox("week");
+  const loadToday = (force = false) => loadInbox("today", force);
+  const loadYesterday = (force = false) => loadInbox("yesterday", force);
+  const loadWeek = (force = false) => loadInbox("week", force);
 
-  const loadMonthly = () =>
-    loadInbox("monthly?limitSenders=8&lookbackDays=30");
+  const loadMonthly = (force = false) =>
+    loadInbox("monthly?limitSenders=8&lookbackDays=30", force);
 
   return {
     loadToday,

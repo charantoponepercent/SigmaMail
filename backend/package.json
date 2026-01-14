@@ -14,9 +14,11 @@
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
     "bcryptjs": "^3.0.3",
+    "bullmq": "^5.66.5",
     "cloudinary": "^2.8.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
+    "events": "^3.3.0",
     "express": "^5.1.0",
     "googleapis": "^165.0.0",
     "ioredis": "^5.8.2",
