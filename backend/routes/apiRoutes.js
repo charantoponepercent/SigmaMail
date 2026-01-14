@@ -144,9 +144,23 @@ router.get('/inbox/today', async (req, res) => {
     const emails = await Email.find({
       userId: req.user.id,
       date: { $gte: start, $lte: end },
-    }).sort({ date: -1 });
+    }).sort({ date: -1 }).lean();
 
-    res.json({ emails });
+    const threadIds = [...new Set(emails.map(e => e.threadId).filter(Boolean))];
+    const threads = await Thread.find(
+      { userId: req.user.id, threadId: { $in: threadIds } },
+      { threadId: 1, unreadCount: 1 }
+    ).lean();
+
+    const unreadMap = {};
+    for (const t of threads) unreadMap[t.threadId] = t.unreadCount || 0;
+
+    const enrichedEmails = emails.map(e => ({
+      ...e,
+      unreadCount: unreadMap[e.threadId] || 0,
+    }));
+
+    res.json({ emails: enrichedEmails });
   } catch (err) {
     console.error('Error loading today emails:', err);
     res.status(500).json({ error: 'Failed to load today\'s emails' });
@@ -170,7 +184,21 @@ router.get('/inbox/yesterday', async (req, res) => {
       date: { $gte: start, $lte: end },
     }).sort({ date: -1 }).lean();
 
-    res.json({ emails });
+    const threadIds = [...new Set(emails.map(e => e.threadId).filter(Boolean))];
+    const threads = await Thread.find(
+      { userId: req.user.id, threadId: { $in: threadIds } },
+      { threadId: 1, unreadCount: 1 }
+    ).lean();
+
+    const unreadMap = {};
+    for (const t of threads) unreadMap[t.threadId] = t.unreadCount || 0;
+
+    const enrichedEmails = emails.map(e => ({
+      ...e,
+      unreadCount: unreadMap[e.threadId] || 0,
+    }));
+
+    res.json({ emails: enrichedEmails });
   } catch (err) {
     console.error('Error loading yesterday inbox:', err);
     res.status(500).json({ error: "Failed to load yesterday's inbox" });
@@ -193,7 +221,21 @@ router.get('/inbox/week', async (req, res) => {
       date: { $gte: start, $lte: end },
     }).sort({ date: -1 }).lean();
 
-    res.json({ emails });
+    const threadIds = [...new Set(emails.map(e => e.threadId).filter(Boolean))];
+    const threads = await Thread.find(
+      { userId: req.user.id, threadId: { $in: threadIds } },
+      { threadId: 1, unreadCount: 1 }
+    ).lean();
+
+    const unreadMap = {};
+    for (const t of threads) unreadMap[t.threadId] = t.unreadCount || 0;
+
+    const enrichedEmails = emails.map(e => ({
+      ...e,
+      unreadCount: unreadMap[e.threadId] || 0,
+    }));
+
+    res.json({ emails: enrichedEmails });
   } catch (err) {
     console.error('Error loading week inbox:', err);
     res.status(500).json({ error: 'Failed to load week inbox' });
@@ -219,7 +261,21 @@ router.get("/inbox/monthly", async (req, res) => {
       .sort({ date: -1 })
       .lean();
 
-    res.json({ emails });
+    const threadIds = [...new Set(emails.map(e => e.threadId).filter(Boolean))];
+    const threads = await Thread.find(
+      { userId: req.user.id, threadId: { $in: threadIds } },
+      { threadId: 1, unreadCount: 1 }
+    ).lean();
+
+    const unreadMap = {};
+    for (const t of threads) unreadMap[t.threadId] = t.unreadCount || 0;
+
+    const enrichedEmails = emails.map(e => ({
+      ...e,
+      unreadCount: unreadMap[e.threadId] || 0,
+    }));
+
+    res.json({ emails: enrichedEmails });
   } catch (err) {
     console.error("Error loading monthly inbox:", err);
     res.status(500).json({ error: "Failed to load monthly inbox" });

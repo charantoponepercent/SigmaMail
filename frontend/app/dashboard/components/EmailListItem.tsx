@@ -41,7 +41,15 @@ export default function EmailListItem({
         {/* Top Row */}
         <div className="flex items-center justify-between gap-2 mb-1">
           <div className="flex items-center gap-2 min-w-0 flex-1">
-            <h3 className="text-[14px] font-semibold text-gray-900 truncate">
+            
+
+            <h3
+              className={`text-[14px] truncate ${
+                msg.isRead === false
+                  ? "font-semibold text-gray-900"
+                  : "font-medium text-gray-700"
+              }`}
+            >
               {msg.from?.split("<")[0].trim() || "Unknown Sender"}
             </h3>
             {msg.priority && (
@@ -65,10 +73,28 @@ export default function EmailListItem({
           <span className="text-xs text-gray-500 whitespace-nowrap flex-shrink-0">
             {formatDate(msg.date)}
           </span>
+          {msg.unreadCount > 0 && (
+            <span className="ml-2 px-2 py-0.5 text-[10px] font-semibold rounded-full bg-gray-100 text-blue-700">
+              {msg.unreadCount}
+            </span>
+          )}
+
+          {(msg.unreadCount ?? 0) > 0 && (
+              <span
+                className="w-1.5 h-1.5 rounded-full bg-blue-600 flex-shrink-0"
+                title="Unread"
+              />
+            )}
         </div>
 
         {/* Subject */}
-        <p className="text-[12px] font-medium text-gray-500 truncate mb-1">
+        <p
+          className={`text-[12px] truncate mb-1 ${
+            msg.isRead === false
+              ? "font-semibold text-gray-800"
+              : "font-medium text-gray-500"
+          }`}
+        >
           {cleanSubject(msg.subject)}
         </p>
 
