@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import Link from "next/link";
 
 type Props = {
   isSyncing: boolean;
@@ -47,7 +48,7 @@ export default function Sidebar({
             S
           </div>
           <h1 className="text-lg font-bold tracking-tight text-gray-800">
-            SIGMAMAIL
+            <Link href="/">SIGMAMAIL</Link>
           </h1>
 
           <button

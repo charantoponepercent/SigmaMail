@@ -1,6 +1,7 @@
 "use client";
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Navbar from "./components/Navbar";
 
 
 export default function HomePage() {
@@ -8,16 +9,17 @@ export default function HomePage() {
 
   useEffect(() => {
     const token = localStorage.getItem("token");
-    if (token) {
-      router.push("/dashboard");
-    } else {
+    if (!token) {
       router.push("/login");
     }
   }, [router]);
 
   return (
+    <>
+    <Navbar/>
     <div className="flex items-center justify-center h-screen">
-      <p className="text-gray-500 text-lg">Redirecting...</p>
+      <p className="text-gray-500 text-lg">Home</p>
     </div>
+    </>
   );
 }
