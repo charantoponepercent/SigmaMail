@@ -4,7 +4,7 @@
 "use client";
 
 import React from "react";
-import { X, ChevronLeft, ChevronRight, ChevronDown, ChevronRight as ChevronRightIcon } from "lucide-react";
+import { X, ChevronLeft, ChevronRight, ChevronDown, ChevronRight as ChevronRightIcon, Sparkles } from "lucide-react";
 import { format } from "date-fns";
 import SecureEmailViewer from "@/components/SecureEmailViewer";
 import extractQuotedSections from "@/lib/extractQuotedSections";
@@ -35,6 +35,8 @@ interface ThreadEmail {
   htmlBodyRaw?: string;
   textBody?: string;
   account?: string;
+  aiExplanation?: string;
+  aiConfidence?: number;
 }
 
 interface ThreadViewerProps {
@@ -193,7 +195,7 @@ export default function ThreadViewer({ thread, onClose, onPrev, onNext }: Thread
 
 
       {/* SUBJECT BAR */}
-      <div className="px-4 py-4 bg-white shadow-sm">
+      <div className="px-4 py-4 bg-white shadow-sm space-y-2">
         <h1 className="text-xl font-semibold text-gray-900 leading-tight tracking-tight">
           {sorted[sorted.length - 1].subject || "(No Subject)"}
         </h1>
@@ -224,6 +226,27 @@ export default function ThreadViewer({ thread, onClose, onPrev, onNext }: Thread
             })()}
           </span>
         </div>
+
+        {sorted[sorted.length - 1].aiExplanation && (
+          <div className="mt-3 flex items-start gap-3 rounded-xl border border-purple-100 bg-purple-50/60 px-4 py-3">
+            <div className="mt-0.5">
+              <Sparkles className="w-4 h-4 text-purple-600" />
+            </div>
+            <div className="flex-1">
+              <p className="text-[13px] font-medium text-purple-800">
+                AI Insight
+              </p>
+              <p className="mt-1 text-[13px] text-purple-700 leading-relaxed">
+                {sorted[sorted.length - 1].aiExplanation}
+              </p>
+            </div>
+            {typeof sorted[sorted.length - 1].aiConfidence === "number" && (
+              <span className="ml-auto text-[11px] text-purple-600 whitespace-nowrap">
+                {Math.round(sorted[sorted.length - 1].aiConfidence * 100)}% confident
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       {/* THREAD-LEVEL ATTACHMENTS BAR (collapsible, grouped) */}
