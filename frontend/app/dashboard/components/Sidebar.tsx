@@ -5,17 +5,28 @@ import React from "react";
 import {
   Inbox,
   RefreshCw,
-  Plus,
-  Settings,
-  LogOut,
-  EllipsisVertical,
   BookOpen,
   AlertCircle,
   Clock,
   Reply,
+  ChevronsUpDown,
+  PlusCircle,
+  LogOut,
+  Settings,
+  Trash2,
+  User,
+  User2,
+  PlusIcon,
 } from "lucide-react";
 
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 import Link from "next/link";
 
 type Props = {
@@ -43,9 +54,17 @@ export default function Sidebar({
   setAccountToDisconnect,
   onShowDigest,
 }: Props) {
-  const [showAccounts, setShowAccounts] = React.useState(false);
+  
+  // Helper to resolve the active account object
+  const activeAccountObj = accounts.find((a) => a.email === selectedAccount) || accounts[0];
+  const activeEmail = activeAccountObj?.email || "No Account";
+
   return (
-    <aside className="w-[220px] ml-2 mt-2 mb-2 flex flex-col flex-shrink-0 overflow-hidden">
+    <aside className="w-[220px] ml-2 mt-2 mb-2 flex flex-col flex-shrink-0 overflow-hidden h-[calc(100vh-16px)]">
+      {/* ========================================================= */}
+      {/* EXISTING UI (UNCHANGED)                                   */}
+      {/* ========================================================= */}
+      
       {/* TOP LOGO */}
       <div className="px-4 pt-4 pb-2">
         <div className="flex items-center justify-between gap-2">
@@ -64,7 +83,7 @@ export default function Sidebar({
             {isSyncing ? (
               <span className="animate-spin h-4 w-4 border-2 border-gray-600 border-t-transparent rounded-full"></span>
             ) : (
-              <RefreshCw className="h-4 w-4 text-gray-700" />
+              <RefreshCw className="h-4 w-4 text-blue-600" />
             )}
           </button>
         </div>
@@ -87,17 +106,17 @@ export default function Sidebar({
                 : "border-transparent hover:bg-gray-100 text-gray-600"
             }`}
         >
-          <Inbox className="w-4 h-4" />
+          <Inbox className="w-4 h-4 text-gray-500" />
           <span className="text-[13.5px] font-medium">All Inbox</span>
         </div>
       </div>
+
       {/* TODAY'S DECISIONS */}
       <div className="px-4 mt-6 mb-2">
         <h3 className="text-[11px] font-semibold text-gray-400 uppercase tracking-widest">
           Today’s Decisions
         </h3>
 
-        {/* Needs Reply */}
         <div
           onClick={() => setSelectedAccount("__NEEDS_REPLY__")}
           className={`mt-3 flex items-center gap-3 px-3 py-2.5 cursor-pointer rounded-lg border transition-all
@@ -107,11 +126,10 @@ export default function Sidebar({
                 : "border-transparent hover:bg-gray-100 text-gray-600"
             }`}
         >
-          <Reply className="w-4 h-4" />
+          <Reply className="w-4 h-4 text-blue-600" />
           <span className="text-[13.5px] font-medium">Needs Reply</span>
         </div>
 
-        {/* Deadlines Today */}
         <div
           onClick={() => setSelectedAccount("__DEADLINES_TODAY__")}
           className={`mt-1 flex items-center gap-3 px-3 py-2.5 cursor-pointer rounded-lg border transition-all
@@ -121,11 +139,10 @@ export default function Sidebar({
                 : "border-transparent hover:bg-gray-100 text-gray-600"
             }`}
         >
-          <Clock className="w-4 h-4" />
+          <Clock className="w-4 h-4 text-amber-600" />
           <span className="text-[13.5px] font-medium">Deadlines Today</span>
         </div>
 
-        {/* Overdue Follow-Ups */}
         <div
           onClick={() => setSelectedAccount("__OVERDUE_FOLLOWUPS__")}
           className={`mt-1 flex items-center gap-3 px-3 py-2.5 cursor-pointer rounded-lg border transition-all
@@ -135,10 +152,11 @@ export default function Sidebar({
                 : "border-transparent hover:bg-gray-100 text-gray-600"
             }`}
         >
-          <AlertCircle className="w-4 h-4" />
+          <AlertCircle className="w-4 h-4 text-red-600" />
           <span className="text-[13.5px] font-medium">Overdue Follow‑ups</span>
         </div>
       </div>
+
       {/* AI SECTION */}
       <div className="px-4 mt-6 mb-2">
         <h3 className="text-[11px] font-semibold text-gray-400 uppercase tracking-widest">
@@ -147,104 +165,117 @@ export default function Sidebar({
 
         <div
           onClick={() => onShowDigest && onShowDigest()}
-          className={`mt-3 flex items-center gap-3 px-3 py-2.5 cursor-pointer rounded-lg border transition-all 
-            hover:bg-gray-100 text-gray-700`}
+          className={`mt-3 flex items-center gap-3 bg-transparent hover:bg-gray-100 rounded-lg px-3 py-2.5 cursor-pointer transition-all text-gray-700`}
         >
-          <BookOpen className="w-4 h-4" />
+          <BookOpen className="w-4 h-4 text-purple-600" />
           <span className="text-[13.5px] font-medium">AI Daily Digest</span>
         </div>
       </div>
+
       {/* SPACER */}
       <div className="flex-1" />
-
-      {/* CONNECT ACCOUNT BUTTON */}
+      <div className="flex justify-center">
       <button
         onClick={connectNewGmail}
-        className="w-[200px] ml-2 flex items-center justify-center gap-2 py-2 mb-3 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+        className="
+          w-[200px]
+          flex items-center justify-center gap-2
+          rounded-lg
+          bg-blue-500
+          px-3 py-2.5
+          text-white
+          text-[13px] font-medium
+          hover:bg-blue-600
+          transition
+          cursor-pointer
+        "
       >
-        Connect Mail <Plus className="w-4 h-4" />
+        <PlusIcon className="h-4 w-4"/>
+        <span>Connect Mail</span>
       </button>
+    </div>
 
-      {/* CONNECTED ACCOUNTS */}
-      <div className="px-4 pb-4">
-        <h2 className="text-[11px] font-semibold text-gray-400 uppercase mb-2 tracking-widest px-1">
-          Connected Account
-        </h2>
 
-        {/* Active Account Card */}
-        {accounts.length > 0 && (
-          <div
-            onClick={() => setShowAccounts((v) => !v)}
-            className="flex items-center justify-between px-3 py-2.5 rounded-xl border bg-white hover:bg-gray-50 cursor-pointer transition"
-          >
-            <div className="flex items-center gap-2.5 truncate">
-              <div className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white text-[11px] font-bold uppercase shadow-sm">
-                {accounts.find((a) => a.email === selectedAccount)?.email?.[0] ||
-                  accounts[0].email[0]}
+      {/* ========================================================= */}
+      {/* UPDATED FOOTER                                            */}
+      {/* ========================================================= */}
+      
+      <div className="p-3 border-t border-gray-100">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button className="flex items-center justify-between w-full px-3 py-2.5 cursor-pointer rounded-xl 
+              bg-gray-50 hover:bg-gray-100 transition-all outline-none group border border-gray-200">
+              
+              <div className="flex items-center gap-2 leading-tight">
+              <User2 className="w-4 h-4 text-gray-500" />
+              <span className="text-[13.5px] font-semibold text-gray-800">
+                Connected Accounts
+              </span>
+            </div>
+              <ChevronsUpDown className="w-4 h-4 text-gray-400 group-hover:text-gray-600 transition" />
+            </button>
+          </DropdownMenuTrigger>
+
+          <DropdownMenuContent align="end" side="right" className="w-[260px] ml-2 p-2 bg-white border-gray-100 shadow-xl rounded-xl">
+            
+            {/* Header */}
+            <DropdownMenuLabel className="px-3 pt-2 pb-3">
+              <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-widest">
+                Connected Accounts
               </div>
-              <div className="truncate">
-                <p className="text-[13px] font-medium truncate">
-                  {selectedAccount || accounts[0].email}
-                </p>
-                <p className="text-[11px] text-gray-400">
-                  {accounts.length} account{accounts.length > 1 ? "s" : ""}
-                </p>
-              </div>
+
+            </DropdownMenuLabel>
+            
+            {/* Accounts List - Each has an inline Disconnect button */}
+            <div className="flex flex-col gap-1">
+              {accounts.map((acc) => (
+                <DropdownMenuItem
+                  key={acc._id}
+                  onClick={() => setSelectedAccount(acc.email)}
+                  className={`group flex items-center justify-between cursor-pointer rounded-lg px-2 py-1.5 transition-colors ${
+                    selectedAccount === acc.email ? "bg-blue-50/50" : "hover:bg-gray-50"
+                  }`}
+                >
+                  {/* Left: Account Info */}
+                  <div className="flex items-center gap-3 overflow-hidden">
+                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border ${
+                       selectedAccount === acc.email ? "bg-blue-100 text-blue-700 border-blue-200" : "bg-gray-100 text-gray-600 border-gray-200"
+                    }`}>
+                      {acc.email[0].toUpperCase()}
+                    </div>
+                    <span className={`text-[13px] truncate max-w-[140px] ${selectedAccount === acc.email ? "font-semibold text-gray-800" : "text-gray-600"}`}>
+                      {acc.email}
+                    </span>
+                  </div>
+
+                  {/* Right: Disconnect Button (Only visible on hover or if active) */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation(); // Prevent switching when clicking delete
+                      setAccountToDisconnect(acc.email);
+                      setShowDialog(true);
+                    }}
+                    className="cursor-pointer opacity-0 group-hover:opacity-100 p-1.5 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-100 transition-all"
+                    title="Disconnect this account"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 " />
+                  </button>
+                </DropdownMenuItem>
+              ))}
             </div>
 
-            <EllipsisVertical className="w-4 h-4 text-gray-400" />
-          </div>
-        )}
+            <DropdownMenuSeparator className="bg-gray-100 my-3" />
 
-        {/* Account Switcher Panel */}
-        {showAccounts && (
-          <div className="mt-2 rounded-xl border bg-white shadow-lg max-h-[220px] overflow-y-auto custom-scrollbar">
-            {accounts.map((acc) => (
-              <div
-                key={acc._id}
-                onClick={() => {
-                  setSelectedAccount(acc.email);
-                  setShowAccounts(false);
-                }}
-                className={`flex items-center justify-between px-3 py-2 cursor-pointer transition
-                  ${
-                    selectedAccount === acc.email
-                      ? "bg-blue-50 text-blue-900"
-                      : "hover:bg-gray-50 text-gray-700"
-                  }`}
-              >
-                <span className="text-[13px] truncate">{acc.email}</span>
+            <DropdownMenuItem 
+              onClick={logout}
+              className="cursor-pointer flex items-center gap-2.5 text-gray-600 rounded-lg px-2 py-2"
+            >
+              <LogOut className="w-4 h-4" />
+              <span className="text-[13px] font-medium">Log out</span>
+            </DropdownMenuItem>
 
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setAccountToDisconnect(acc.email);
-                    setShowDialog(true);
-                  }}
-                  className="text-[11px] text-red-500 hover:text-red-600"
-                >
-                  Disconnect
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Settings + Logout */}
-        <div className="border-t border-gray-200 pt-3 space-y-1 mt-4">
-          <button className="w-full flex items-center justify-between hover:bg-gray-100 px-2 py-2 rounded-md text-gray-600">
-            <span className="text-[13px] font-medium">Settings</span>
-            <Settings className="w-4 h-4 text-gray-400" />
-          </button>
-
-          <button
-            onClick={logout}
-            className="w-full flex items-center justify-between hover:bg-red-50 px-2 py-2 rounded-md text-red-600"
-          >
-            <span className="text-[13px] font-medium">Logout</span>
-            <LogOut className="w-4 h-4" />
-          </button>
-        </div>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </aside>
   );
