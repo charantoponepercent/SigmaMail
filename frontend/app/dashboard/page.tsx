@@ -208,13 +208,13 @@ export default function Dashboard() {
 
           // 🔥 CRITICAL FIX: force fresh fetch, do NOT rely on old closures
           if (activeFilterRef.current === "TODAY") {
-            loadToday(true);
+            loadToday(true, undefined, selectedAccount);
           } else if (activeFilterRef.current === "YESTERDAY") {
-            loadYesterday(true);
+            loadYesterday(true, selectedAccount);
           } else if (activeFilterRef.current === "WEEK") {
-            loadWeek(true);
+            loadWeek(true, selectedAccount);
           } else if (activeFilterRef.current === "MONTHLY") {
-            loadMonthly(true);
+            loadMonthly(true, selectedAccount);
           }
         }
 
@@ -266,7 +266,7 @@ export default function Dashboard() {
         "__OVERDUE_FOLLOWUPS__": "OVERDUE_FOLLOWUPS",
       };
 
-      loadToday(true, decisionMap[selectedAccount]);
+      loadToday(true, decisionMap[selectedAccount], selectedAccount);
       return;
     }
 
@@ -274,13 +274,13 @@ export default function Dashboard() {
     setLoadingMessages(true);
 
     if (activeFilter === "TODAY") {
-      loadToday();
+      loadToday(false, undefined, selectedAccount);
     } else if (activeFilter === "YESTERDAY") {
-      loadYesterday();
+      loadYesterday(false, selectedAccount);
     } else if (activeFilter === "WEEK") {
-      loadWeek();
+      loadWeek(false, selectedAccount);
     } else if (activeFilter === "MONTHLY") {
-      loadMonthly();
+      loadMonthly(false, selectedAccount);
     }
   }, [selectedAccount, activeFilter]);
 

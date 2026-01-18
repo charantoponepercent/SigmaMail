@@ -115,6 +115,37 @@ const EmailSchema = new mongoose.Schema(
     followUpThresholdHours: { type: Number, default: 48 },
     isOverdueFollowUp: { type: Boolean, default: false, index: true },
 
+    // ---------- AI Augmentation ----------
+    aiNeedsReply: {
+      type: Boolean,
+      default: null,
+    },
+
+    aiHasDeadline: {
+      type: Boolean,
+      default: null,
+    },
+
+    aiIsOverdueFollowUp: {
+      type: Boolean,
+      default: null,
+    },
+
+    aiConfidence: {
+      type: Number,
+      default: null,
+    },
+
+    aiExplanation: {
+      type: String,
+      default: null,
+    },
+
+    aiEvaluatedAt: {
+      type: Date,
+      default: null,
+    },
+
     // ---------- System ----------
     actionLastEvaluatedAt: { type: Date },
   },

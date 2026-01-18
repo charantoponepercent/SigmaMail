@@ -310,7 +310,7 @@ router.get("/inbox/monthly", async (req, res) => {
 const redis = new Redis(process.env.REDIS_URL);
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
 
 router.post("/ai/summarize-thread", async (req, res) => {
   try {
