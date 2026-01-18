@@ -106,16 +106,13 @@ export default function Dashboard() {
       console.error("Failed to load accounts:", err);
     }
   }, [selectedAccount]);
-  const [currentFolder, setCurrentFolder] = useState("INBOX");
   const [sourceMessages, setSourceMessages] = useState<DashboardMessage[]>([]);
   const [messages, setMessages] = useState<DashboardMessage[]>([]);
-  const [nextPageToken, setNextPageToken] = useState<string | null>(null);
   const [selectedMessage, setSelectedMessage] =
     useState<DashboardThread | null>(null);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [showDialog, setShowDialog] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
   const [searchLoading, setSearchLoading] = useState(false);  
   const [accountToDisconnect, setAccountToDisconnect] = useState<string | null>(
     null

@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
+import React from "react";
 import {
   Inbox,
   RefreshCw,
@@ -42,6 +43,7 @@ export default function Sidebar({
   setAccountToDisconnect,
   onShowDigest,
 }: Props) {
+  const [showAccounts, setShowAccounts] = React.useState(false);
   return (
     <aside className="w-[220px] ml-2 mt-2 mb-2 flex flex-col flex-shrink-0 overflow-hidden">
       {/* TOP LOGO */}
@@ -166,59 +168,69 @@ export default function Sidebar({
       {/* CONNECTED ACCOUNTS */}
       <div className="px-4 pb-4">
         <h2 className="text-[11px] font-semibold text-gray-400 uppercase mb-2 tracking-widest px-1">
-          Connected Accounts
+          Connected Account
         </h2>
 
-        <div className="space-y-1 max-h-[200px] overflow-y-auto custom-scrollbar">
-          {accounts.length === 0 ? (
-            <p className="text-xs text-gray-400 italic px-1">No accounts connected</p>
-          ) : (
-            accounts.map((acc) => (
+        {/* Active Account Card */}
+        {accounts.length > 0 && (
+          <div
+            onClick={() => setShowAccounts((v) => !v)}
+            className="flex items-center justify-between px-3 py-2.5 rounded-xl border bg-white hover:bg-gray-50 cursor-pointer transition"
+          >
+            <div className="flex items-center gap-2.5 truncate">
+              <div className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white text-[11px] font-bold uppercase shadow-sm">
+                {accounts.find((a) => a.email === selectedAccount)?.email?.[0] ||
+                  accounts[0].email[0]}
+              </div>
+              <div className="truncate">
+                <p className="text-[13px] font-medium truncate">
+                  {selectedAccount || accounts[0].email}
+                </p>
+                <p className="text-[11px] text-gray-400">
+                  {accounts.length} account{accounts.length > 1 ? "s" : ""}
+                </p>
+              </div>
+            </div>
+
+            <EllipsisVertical className="w-4 h-4 text-gray-400" />
+          </div>
+        )}
+
+        {/* Account Switcher Panel */}
+        {showAccounts && (
+          <div className="mt-2 rounded-xl border bg-white shadow-lg max-h-[220px] overflow-y-auto custom-scrollbar">
+            {accounts.map((acc) => (
               <div
                 key={acc._id}
-                className={`group flex items-center justify-between px-2 py-2 rounded-lg transition-all ${
-                  selectedAccount === acc.email
-                    ? "bg-white shadow text-gray-900 border border-gray-200"
-                    : "hover:bg-gray-100 text-gray-600"
-                }`}
+                onClick={() => {
+                  setSelectedAccount(acc.email);
+                  setShowAccounts(false);
+                }}
+                className={`flex items-center justify-between px-3 py-2 cursor-pointer transition
+                  ${
+                    selectedAccount === acc.email
+                      ? "bg-blue-50 text-blue-900"
+                      : "hover:bg-gray-50 text-gray-700"
+                  }`}
               >
-                {/* Account Label */}
-                <div className="flex items-center gap-2.5 truncate">
-                  <div className="w-6 h-5 rounded-full bg-gray-200 border border-gray-300 flex items-center justify-center text-gray-600 text-[10px] font-bold uppercase">
-                    {acc.email[0]}
-                  </div>
-                  <span className="truncate text-[13px] font-medium">{acc.email}</span>
-                </div>
+                <span className="text-[13px] truncate">{acc.email}</span>
 
-                {/* Options Menu */}
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <button
-                      onClick={(e) => e.stopPropagation()}
-                      className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-gray-200"
-                    >
-                      <EllipsisVertical className="w-3.5 h-3.5 text-gray-500" />
-                    </button>
-                  </DropdownMenuTrigger>
-
-                  <DropdownMenuContent align="end" className="min-w-[140px] bg-white shadow-lg rounded-md p-1">
-                    <DropdownMenuItem
-                      onClick={() => {
-                        setAccountToDisconnect(acc.email);
-                        setShowDialog(true);
-                      }}
-                      className="text-[13px] text-red-600 font-medium cursor-pointer hover:bg-red-50"
-                    >
-                      Disconnect
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setAccountToDisconnect(acc.email);
+                    setShowDialog(true);
+                  }}
+                  className="text-[11px] text-red-500 hover:text-red-600"
+                >
+                  Disconnect
+                </button>
               </div>
-            ))
-          )}
-        </div>
+            ))}
+          </div>
+        )}
 
-        {/* SETTINGS + LOGOUT */}
+        {/* Settings + Logout */}
         <div className="border-t border-gray-200 pt-3 space-y-1 mt-4">
           <button className="w-full flex items-center justify-between hover:bg-gray-100 px-2 py-2 rounded-md text-gray-600">
             <span className="text-[13px] font-medium">Settings</span>
