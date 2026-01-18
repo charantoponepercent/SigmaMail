@@ -90,6 +90,33 @@ const EmailSchema = new mongoose.Schema(
       type: Object,
       default: {},
     },
+
+    /* ----------------------------------------
+       📌 ACTION INTELLIGENCE (Today's Decisions)
+    ----------------------------------------- */
+
+    // Incoming vs outgoing (derived once)
+    isIncoming: { type: Boolean, index: true },
+
+    // ---------- Needs Reply ----------
+    needsReply: { type: Boolean, default: false, index: true },
+    needsReplyScore: { type: Number, default: 0 }, // heuristic + AI boost
+    needsReplyReason: { type: String }, // "question", "request", "ai_detected"
+
+    // ---------- Deadlines ----------
+    hasDeadline: { type: Boolean, default: false, index: true },
+    deadlineAt: { type: Date, index: true },
+    deadlineSource: { type: String }, // "explicit", "relative", "ai"
+    deadlineConfidence: { type: Number, default: 0 }, // 0–1
+
+    // ---------- Follow-ups ----------
+    isFollowUp: { type: Boolean, default: false, index: true },
+    followUpWaitingSince: { type: Date }, // when user last replied
+    followUpThresholdHours: { type: Number, default: 48 },
+    isOverdueFollowUp: { type: Boolean, default: false, index: true },
+
+    // ---------- System ----------
+    actionLastEvaluatedAt: { type: Date },
   },
   { timestamps: true }
 );

@@ -13,6 +13,7 @@ import {generateEmbedding} from '../utils/embedding.js';
 import { classifyEmailFull } from "../classification/classificationEngine.js";
 import cloudinary from '../config/cloudinary.js'; // <-- ADDED
 import { inboxEvents } from "../events/inboxEvents.js";
+import { evaluateActions } from "../actions/index.js";
 
 
 // Main Sync Function
@@ -44,6 +45,7 @@ async function syncAccount(account) {
 }
 
 export async function syncSingleMessage(gmail, messageId, account) {
+  console.log("📩 syncSingleMessage START:", messageId);
   // Use upsert to avoid duplicates in race conditions
   const emailFilter = { messageId, accountId: account._id };
   const existed = await Email.exists(emailFilter);
@@ -326,6 +328,10 @@ export async function syncSingleMessage(gmail, messageId, account) {
       console.error("❌ classifyEmailFull failed:", err);
     }
 
+    const fromHeader = find("From") || "";
+    const isIncoming = !fromHeader.includes(account.email);
+  
+
   const emailDoc = await Email.findOneAndUpdate(
     emailFilter,
     {
@@ -338,6 +344,7 @@ export async function syncSingleMessage(gmail, messageId, account) {
       from: find('From'),
       to: find('To'),
       date: new Date(find('Date')),
+      isIncoming,
 
       textBody,
       htmlBodyRaw: htmlBody,
@@ -371,6 +378,7 @@ export async function syncSingleMessage(gmail, messageId, account) {
     },
     { upsert: true, new: true }
   );
+  console.log("💾 Email saved:", emailDoc._id.toString());
 
   // 🔔 Emit SSE event for new email
   if (!existed) {
@@ -388,7 +396,31 @@ export async function syncSingleMessage(gmail, messageId, account) {
     });
   }
 
-  await updateThread(account, emailDoc);
+  try {
+    console.log("🧩 Before updateThread");
+    await updateThread(account, emailDoc);
+    console.log("🧩 After updateThread");
+  } catch (err) {
+    console.error("❌ updateThread failed:", err.message);
+  }
+
+  // ----------------------------------------
+  // ACTION INTELLIGENCE EVALUATION
+  // ----------------------------------------
+  const threadMeta = {
+    lastMessageFrom: emailDoc.isIncoming ? "other" : "me",
+    lastMessageAt: emailDoc.date,
+  };
+
+  console.log("🧠 About to evaluate actions for:", emailDoc._id.toString());
+  const actionData = evaluateActions(emailDoc.toObject(), threadMeta);
+  console.log("ACTION DATA:", actionData);
+
+  await Email.updateOne(
+    { _id: emailDoc._id },
+    { $set: actionData }
+  );
+
   return emailDoc;
 }
 

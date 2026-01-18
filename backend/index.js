@@ -12,6 +12,7 @@ import gmailWebhook from "./routes/gmailWebhook.js";
 import { inboxEvents } from "./events/inboxEvents.js";
 import { Worker } from "bullmq";
 import { redis } from "./utils/redis.js";
+import { scheduleActionReevaluation } from "./schedulers/actionReevaluation.scheduler.js";
 
 
 dotenv.config();
@@ -76,6 +77,11 @@ new Worker(
 );
 
 const PORT = process.env.PORT || 4000;
+// ----------------------------------------
+// Schedule Action Re-evaluation (once)
+// ----------------------------------------
+await scheduleActionReevaluation();
+
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
