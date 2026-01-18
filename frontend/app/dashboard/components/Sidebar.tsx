@@ -9,6 +9,9 @@ import {
   LogOut,
   EllipsisVertical,
   BookOpen,
+  AlertCircle,
+  Clock,
+  Reply,
 } from "lucide-react";
 
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
@@ -84,6 +87,54 @@ export default function Sidebar({
         >
           <Inbox className="w-4 h-4" />
           <span className="text-[13.5px] font-medium">All Inbox</span>
+        </div>
+      </div>
+      {/* TODAY'S DECISIONS */}
+      <div className="px-4 mt-6 mb-2">
+        <h3 className="text-[11px] font-semibold text-gray-400 uppercase tracking-widest">
+          Today’s Decisions
+        </h3>
+
+        {/* Needs Reply */}
+        <div
+          onClick={() => setSelectedAccount("__NEEDS_REPLY__")}
+          className={`mt-3 flex items-center gap-3 px-3 py-2.5 cursor-pointer rounded-lg border transition-all
+            ${
+              selectedAccount === "__NEEDS_REPLY__"
+                ? "bg-gray-200 border-gray-100 text-black"
+                : "border-transparent hover:bg-gray-100 text-gray-600"
+            }`}
+        >
+          <Reply className="w-4 h-4" />
+          <span className="text-[13.5px] font-medium">Needs Reply</span>
+        </div>
+
+        {/* Deadlines Today */}
+        <div
+          onClick={() => setSelectedAccount("__DEADLINES_TODAY__")}
+          className={`mt-1 flex items-center gap-3 px-3 py-2.5 cursor-pointer rounded-lg border transition-all
+            ${
+              selectedAccount === "__DEADLINES_TODAY__"
+                ? "bg-gray-200 border-gray-100 text-black"
+                : "border-transparent hover:bg-gray-100 text-gray-600"
+            }`}
+        >
+          <Clock className="w-4 h-4" />
+          <span className="text-[13.5px] font-medium">Deadlines Today</span>
+        </div>
+
+        {/* Overdue Follow-Ups */}
+        <div
+          onClick={() => setSelectedAccount("__OVERDUE_FOLLOWUPS__")}
+          className={`mt-1 flex items-center gap-3 px-3 py-2.5 cursor-pointer rounded-lg border transition-all
+            ${
+              selectedAccount === "__OVERDUE_FOLLOWUPS__"
+                ? "bg-gray-200 border-gray-100 text-black"
+                : "border-transparent hover:bg-gray-100 text-gray-600"
+            }`}
+        >
+          <AlertCircle className="w-4 h-4" />
+          <span className="text-[13.5px] font-medium">Overdue Follow‑ups</span>
         </div>
       </div>
       {/* AI SECTION */}

@@ -9,6 +9,11 @@ export function useInboxLoader({
   setSourceMessages,
   setLoadingMessages,
   activeCategory,
+}: {
+  setMessages: (messages: any[]) => void;
+  setSourceMessages: (messages: any[]) => void;
+  setLoadingMessages: (loading: boolean) => void;
+  activeCategory: string;
 }) {
 
   // Helper to process inbox responses (group by thread)
@@ -47,12 +52,12 @@ export function useInboxLoader({
 
   // Generic loader
   const loadInbox = useCallback(
-    async (endpoint: string, force = false) => {
+    async (endpoint: string, force = false, query: string = "") => {
       setLoadingMessages(true);
 
       try {
         const token = localStorage.getItem("token");
-        const res = await fetch(`${API_BASE}/api/inbox/${endpoint}`, {
+        const res = await fetch(`${API_BASE}/api/inbox/${endpoint}${query}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
 
@@ -97,7 +102,12 @@ export function useInboxLoader({
   );
 
   // Public loaders
-  const loadToday = (force = false) => loadInbox("today", force);
+  const loadToday = (force = false, decisionType?: string) => {
+    const query = decisionType
+      ? `?decision=${decisionType}`
+      : "";
+    return loadInbox("today", force, query);
+  };
   const loadYesterday = (force = false) => loadInbox("yesterday", force);
   const loadWeek = (force = false) => loadInbox("week", force);
 

@@ -141,10 +141,31 @@ router.get('/inbox/today', async (req, res) => {
     const end = new Date();
     end.setHours(23, 59, 59, 999);
 
-    const emails = await Email.find({
+    // Today's Decisions filtering
+    const { decision } = req.query;
+
+    const baseFilter = {
       userId: req.user.id,
       date: { $gte: start, $lte: end },
-    }).sort({ date: -1 }).lean();
+    };
+
+    // 🎯 Today’s Decisions filters
+    if (decision === "NEEDS_REPLY") {
+      baseFilter.needsReply = true;
+    }
+
+    if (decision === "DEADLINES_TODAY") {
+      baseFilter.hasDeadline = true;
+      baseFilter.deadlineAt = { $gte: start, $lte: end };
+    }
+
+    if (decision === "OVERDUE_FOLLOWUPS") {
+      baseFilter.isOverdueFollowUp = true;
+    }
+
+    const emails = await Email.find(baseFilter)
+      .sort({ date: -1 })
+      .lean();
 
     const threadIds = [...new Set(emails.map(e => e.threadId).filter(Boolean))];
     const threads = await Thread.find(

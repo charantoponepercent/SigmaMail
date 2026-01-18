@@ -245,12 +245,37 @@ export default function Dashboard() {
     loadAccounts(token);
   }, [router, loadAccounts]);
 
+  // Helper: Is selectedAccount a special Today’s Decisions filter?
+  function isDecisionFilter(account: string | null) {
+    return (
+      account === "__NEEDS_REPLY__" ||
+      account === "__DEADLINES_TODAY__" ||
+      account === "__OVERDUE_FOLLOWUPS__"
+    );
+  }
+
   useEffect(() => {
     if (!selectedAccount) return;
-  
+
+    // 🧠 Today’s Decisions routing (temporary)
+    if (isDecisionFilter(selectedAccount)) {
+      console.log("🧠 Decision filter selected:", selectedAccount);
+      setActiveFilter("TODAY");
+      setLoadingMessages(true);
+
+      const decisionMap: Record<string, string> = {
+        "__NEEDS_REPLY__": "NEEDS_REPLY",
+        "__DEADLINES_TODAY__": "DEADLINES_TODAY",
+        "__OVERDUE_FOLLOWUPS__": "OVERDUE_FOLLOWUPS",
+      };
+
+      loadToday(true, decisionMap[selectedAccount]);
+      return;
+    }
+
     console.log("🔄 Inbox fetch triggered:", activeFilter);
     setLoadingMessages(true);
-  
+
     if (activeFilter === "TODAY") {
       loadToday();
     } else if (activeFilter === "YESTERDAY") {
