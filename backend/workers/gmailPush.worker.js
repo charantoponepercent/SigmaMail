@@ -39,6 +39,18 @@ new Worker(
 
     const incomingHistoryId = historyId;
 
+    // ⛔ Skip duplicate / replayed pushes (VERY IMPORTANT)
+    if (
+      account.lastHistoryId &&
+      BigInt(incomingHistoryId) <= BigInt(account.lastHistoryId)
+    ) {
+      console.log(
+        "⏭️ Skipping already processed historyId:",
+        incomingHistoryId
+      );
+      return;
+    }
+
     // 🧠 First push after watch registration — only set cursor
     if (!account.lastHistoryId) {
       console.log("🧠 Initial history cursor set:", incomingHistoryId);
@@ -153,6 +165,17 @@ new Worker(
     }
 
     for (const messageId of messageIds) {
+      // 🧱 Idempotency: skip if already saved
+      const exists = await Email.findOne({
+        messageId,
+        accountId: account._id,
+      }).select("_id");
+
+      if (exists) {
+        console.log("⏭️ Skipping duplicate message:", messageId);
+        continue;
+      }
+
       const emailDoc = await syncSingleMessage(gmail, messageId, account);
 
       if (!emailDoc) continue;
