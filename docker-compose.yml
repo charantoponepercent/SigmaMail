@@ -1,0 +1,90 @@
+version: "3.9"
+
+services:
+  # ------------------------
+  # Backend API
+  # ------------------------
+  backend-api:
+    build: ./backend
+    container_name: sigmamail-backend
+    command: node index.js
+    ports:
+      - "4000:4000"
+    env_file:
+      - .env
+    depends_on:
+      - mongo
+      - redis
+    restart: unless-stopped
+
+  # ------------------------
+  # Gmail Push Worker
+  # ------------------------
+  worker-gmail-push:
+    build: ./backend
+    container_name: sigmamail-worker-gmail-push
+    command: node workers/gmailPush.worker.js
+    env_file:
+      - .env
+    depends_on:
+      - mongo
+      - redis
+    restart: unless-stopped
+
+  # ------------------------
+  # Gmail Message Sync Worker
+  # ------------------------
+  worker-gmail-sync:
+    build: ./backend
+    container_name: sigmamail-worker-gmail-sync
+    command: node workers/gmailMessageSync.worker.js
+    env_file:
+      - .env
+    depends_on:
+      - mongo
+      - redis
+    restart: unless-stopped
+
+  # ------------------------
+  # Gmail Initial Sync Worker
+  # ------------------------
+  worker-gmail-initial:
+    build: ./backend
+    container_name: sigmamail-worker-gmail-initial
+    command: node workers/gmailInitialSync.worker.js
+    env_file:
+      - .env
+    depends_on:
+      - mongo
+      - redis
+    restart: unless-stopped
+
+  # ------------------------
+  # MongoDB
+  # ------------------------
+  mongo:
+    image: mongo:7
+    container_name: sigmamail-mongo
+    volumes:
+      - mongo_data:/data/db
+    restart: unless-stopped
+
+  # ------------------------
+  # Redis
+  # ------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: sigmamail-redis
+    restart: unless-stopped
+  
+  embedding-service:
+    build: ./backend/embedding-service
+    container_name: sigmamail-embedding
+    ports:
+      - "8000:8000"   # optional, useful for debugging
+    restart: unless-stopped
+  
+
+volumes:
+  mongo_data:
+

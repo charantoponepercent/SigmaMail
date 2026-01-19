@@ -1,0 +1,25 @@
+# Node
+node_modules
+npm-debug.log
+
+# Env & git
+.env
+.git
+.gitignore
+
+# Python / ML / experiments (CRITICAL)
+embedding-service/
+embedding-service/venv/
+embedding-service/.venv/
+embedding-service/__pycache__/
+embedding-service/**/*.pyc
+embedding-service/models/
+embedding-service/**/*.pt
+embedding-service/**/*.h5
+tensorflow
+torch
+
+# OS / editor
+.DS_Store
+.vscode
+.idea
