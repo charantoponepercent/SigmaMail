@@ -7,7 +7,7 @@ export const CATEGORIZATION_RULES = {
     "Personal",
     "Travel",
     "Promotions",
-    "Subscriptions/Updates",
+    "Subscriptions",
     "Social",
     "Shopping",
     "Priority",
@@ -40,7 +40,7 @@ export const CATEGORIZATION_RULES = {
     Promotions: [
       "sale","offer","discount","coupon","limited time","exclusive","flash sale","deal","free gift"
     ],
-    "Subscriptions/Updates": [
+    Subscriptions: [
       "renewal","membership","subscription","saas","trial expired","new feature","release notes","version"
     ],
     Social: [
@@ -75,7 +75,7 @@ export const CATEGORIZATION_RULES = {
     Travel: ["@booking.com", "@expedia.com", "@makemytrip.com", "@goibibo.com", "@redbus.in", "@airbnb.com", "@uber.com", "@ola.com"],
     Social: ["@linkedin.com", "@pinterest.com", "@redditmail.com", "@whatsapp.net", "@telegram.org", "@facebookmail.com"],
     Promotions: ["@newsletter.com", "@promo.net", "@deals.in", "@marketing.co", "@ads.com", "@offers.com"],
-    "Subscriptions/Updates": ["@spotify.com", "@netflix.com", "@hotstar.com", "@zoom.us", "@canva.com", "@substack.com", "@adobe.com"],
+    Subscriptions: ["@spotify.com", "@netflix.com", "@hotstar.com", "@zoom.us", "@canva.com", "@substack.com", "@adobe.com"],
     Shopping: ["@amazon.in", "@flipkart.com", "@myntra.com", "@bigbasket.com", "@zara.com", "@ajio.com", "@nykaa.com"],
   },
 
