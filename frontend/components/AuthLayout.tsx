@@ -21,23 +21,31 @@ export default function AuthLayout({
   imageText,
 }: AuthLayoutProps) {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50">
-      <div className="w-full max-w-4xl p-10 bg-white shadow-xl rounded-4xl overflow-hidden grid grid-cols-1 md:grid-cols-2">
-        {/* LEFT: Form Section */}
-        <div className="p-10 flex flex-col justify-center">
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold text-gray-900 mb-1">{title}</h1>
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#f7f7f8] via-white to-[#f2f2f4] px-6">
+      {/* OUTER SHELL */}
+      <div className="relative w-full max-w-5xl rounded-3xl bg-white/80 backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.08)] overflow-hidden grid grid-cols-1 md:grid-cols-2">
+        
+        {/* LEFT — FORM */}
+        <div className="relative z-10 px-10 py-14 flex flex-col justify-center">
+          <div className="mb-10">
+            <h1 className="text-4xl font-semibold tracking-tight text-gray-900">
+              {title}
+            </h1>
             {subtitle && (
-              <p className="text-gray-500 text-sm">{subtitle}</p>
+              <p className="mt-3 text-sm text-gray-500 max-w-sm">
+                {subtitle}
+              </p>
             )}
           </div>
+
           {children}
+
           {actionText && (
-            <p className="mt-6 text-sm text-gray-600 text-center">
+            <p className="mt-10 text-sm text-gray-600 text-center">
               {actionText}{" "}
               <a
                 href={actionLink}
-                className="text-blue-600 font-semibold hover:underline"
+                className="font-medium text-gray-900 hover:underline underline-offset-4"
               >
                 Log in
               </a>
@@ -45,22 +53,41 @@ export default function AuthLayout({
           )}
         </div>
 
-        {/* RIGHT: Visual Section */}
-        <div className="relative border-2 border-slate-200 p-5 hidden md:flex items-center justify-center bg-gray-100">
+        {/* RIGHT — VISUAL */}
+        <div className="relative hidden md:flex items-center justify-center">
+          {/* Background image */}
           <Image
             src="/textures/auth-bg.jpg"
-            alt="Background texture"
+            alt="SigmaMail background"
             fill
-            className="object-cover opacity-90"
+            className="object-cover"
+            priority
           />
-          <div className="absolute inset-0 bg-gradient-to-b from-white/20 to-black/40" />
-          <div className="relative z-10 p-10 text-white text-center max-w-md">
-            <h2 className="text-2xl font-semibold mb-4 leading-tight drop-shadow">
-              Join SigmaMail and stay ahead with smart inbox management.
+
+          {/* Overlay layers */}
+          <div className="absolute inset-0 bg-gradient-to-tr from-black/70 via-black/40 to-black/10" />
+          <div className="absolute inset-0 backdrop-blur-[2px]" />
+
+          {/* Content */}
+          <div className="relative z-10 px-12 py-14 text-white max-w-md">
+            <div className="mb-6">
+              <span className="inline-block text-xs tracking-wide uppercase text-white/70">
+                SigmaMail
+              </span>
+            </div>
+
+            <h2 className="text-3xl font-semibold leading-tight">
+              {imageText ||
+                "A calmer, smarter inbox — built for people who live in email."}
             </h2>
-            <p className="text-sm text-gray-200">
-              Simplify, organize, and supercharge your email productivity today.
+
+            <p className="mt-5 text-sm text-white/80 leading-relaxed">
+              Unified Gmail accounts, decision-first views, real-time updates,
+              and zero inbox noise — engineered for focus, not distraction.
             </p>
+
+            {/* Decorative divider */}
+            <div className="mt-10 h-px w-20 bg-white/30" />
           </div>
         </div>
       </div>
