@@ -71,6 +71,7 @@ export default function Dashboard() {
   async function handleSyncClick() {
     try {
       setIsSyncing(true);
+      setWaitingForFirstSync(true);
       const token = localStorage.getItem("token");
       const res = await fetch("http://localhost:4000/api/debug/run-sync", {
         headers: {
@@ -112,6 +113,8 @@ export default function Dashboard() {
     useState<DashboardThread | null>(null);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [loadingMessages, setLoadingMessages] = useState(false);
+  const [initialTodayLoading, setInitialTodayLoading] = useState(true);
+  const [waitingForFirstSync, setWaitingForFirstSync] = useState(false);
   const [showDialog, setShowDialog] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);  
   const [accountToDisconnect, setAccountToDisconnect] = useState<string | null>(
@@ -131,6 +134,7 @@ export default function Dashboard() {
   const [newMailCount, setNewMailCount] = useState(0);
   const [showNewTag, setShowNewTag] = useState(false);
   const newMailTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const oauthPopupRef = useRef<Window | null>(null);
 
   useEffect(() => {
     activeFilterRef.current = activeFilter;
@@ -192,6 +196,13 @@ export default function Dashboard() {
         console.log("📦 SSE parsed payload:", payload);
 
         if (payload.type === "NEW_EMAIL") {
+          setInitialTodayLoading(false);
+          if (waitingForFirstSync) {
+            console.log("🚀 First sync email received — auto-loading Today inbox");
+            setWaitingForFirstSync(false);
+            setInitialTodayLoading(true);
+            loadToday(true, undefined, selectedAccount);
+          }
           setNewMailCount((c) => c + 1);
           setShowNewTag(true);
 
@@ -254,6 +265,8 @@ export default function Dashboard() {
   useEffect(() => {
     if (!selectedAccount) return;
 
+    setInitialTodayLoading(true);
+
     // 🧠 Today’s Decisions routing (temporary)
     if (isDecisionFilter(selectedAccount)) {
       console.log("🧠 Decision filter selected:", selectedAccount);
@@ -267,6 +280,9 @@ export default function Dashboard() {
       };
 
       loadToday(true, decisionMap[selectedAccount], selectedAccount);
+      if (activeFilter === "TODAY") {
+        setInitialTodayLoading(false);
+      }
       return;
     }
 
@@ -274,7 +290,10 @@ export default function Dashboard() {
     setLoadingMessages(true);
 
     if (activeFilter === "TODAY") {
-      loadToday(false, undefined, selectedAccount);
+      setInitialTodayLoading(true);
+      loadToday(false, undefined, selectedAccount).finally(() => {
+        setInitialTodayLoading(false);
+      });
     } else if (activeFilter === "YESTERDAY") {
       loadYesterday(false, selectedAccount);
     } else if (activeFilter === "WEEK") {
@@ -288,7 +307,29 @@ export default function Dashboard() {
   function connectNewGmail() {
     const u = JSON.parse(localStorage.getItem("user") || "{}");
     const url = `${API_BASE}/auth/google?userId=${u.id}`;
-    window.open(url, "_blank", "width=800,height=700");
+  
+    oauthPopupRef.current = window.open(
+      url,
+      "_blank",
+      "width=800,height=700"
+    );
+  
+    const handleFocus = () => {
+      if (!oauthPopupRef.current || oauthPopupRef.current.closed) {
+        console.log("🔁 OAuth completed → refreshing inbox");
+  
+        setInitialTodayLoading(true);
+        setWaitingForFirstSync(true);
+  
+        loadToday(true, undefined, selectedAccount).finally(() => {
+          setInitialTodayLoading(false);
+        });
+  
+        window.removeEventListener("focus", handleFocus);
+      }
+    };
+  
+    window.addEventListener("focus", handleFocus);
   }
 
   async function showDigest() {
@@ -365,10 +406,18 @@ export default function Dashboard() {
         sseRef.current.close();
         sseRef.current = null;
       }
+  
       if (newMailTimerRef.current) {
         clearTimeout(newMailTimerRef.current);
         newMailTimerRef.current = null;
       }
+  
+      // ✅ ADD THIS HERE
+      if (oauthPopupRef.current && !oauthPopupRef.current.closed) {
+        oauthPopupRef.current.close();
+      }
+  
+      setWaitingForFirstSync(false);
     };
   }, []);
 
@@ -422,18 +471,39 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* Email List */}
-          <EmailList
-            messages={messages}
-            loadingMessages={loadingMessages}
-            searchLoading={searchLoading}
-            selectedThreadId={selectedThreadId}
-            openMessage={openMessage}
-            cleanSubject={cleanSubject}
-            getAvatarInitial={getAvatarInitial}
-            formatDate={formatDate}
-            selectedAccount={selectedAccount}
-          />
+          <div className="relative flex-1 overflow-hidden">
+            {/* Loader */}
+            <div
+              className={`absolute inset-0 flex items-center justify-center text-gray-400 transition-opacity duration-500 ${
+                initialTodayLoading && activeFilter === "TODAY"
+                  ? "opacity-100"
+                  : "opacity-0 pointer-events-none"
+              }`}
+            >
+              Syncing today’s mail…
+            </div>
+
+            {/* Email list */}
+            <div
+              className={`h-full transition-opacity duration-500 ${
+                initialTodayLoading && activeFilter === "TODAY"
+                  ? "opacity-0"
+                  : "opacity-100"
+              }`}
+            >
+              <EmailList
+                messages={messages}
+                loadingMessages={loadingMessages}
+                searchLoading={searchLoading}
+                selectedThreadId={selectedThreadId}
+                openMessage={openMessage}
+                cleanSubject={cleanSubject}
+                getAvatarInitial={getAvatarInitial}
+                formatDate={formatDate}
+                selectedAccount={selectedAccount}
+              />
+            </div>
+          </div>
         </section>
 
         {/* RIGHT PANEL - Thread Viewer (Slides in/out) */}
