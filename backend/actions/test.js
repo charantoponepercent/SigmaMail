@@ -1,47 +1,63 @@
-import * as chrono from 'chrono-node'; 
-// Make sure to: npm install chrono-node
+import { evaluateActions } from "./index.js";
 
-// --- IMPORT THE FUNCTIONS ---
-// (Paste the evaluateNeedsReply function from above here, 
-//  and the evaluateDeadline function from my previous response here)
-// For brevity, I will simulate the imports assuming you have the files.
-import { evaluateDeadline } from './deadlines.js';
-import { evaluateNeedsReply } from './needsReply.js';
+const now = Date.now();
+const seventyTwoHours = 72 * 60 * 60 * 1000;
 
-// --- YOUR EXACT EMAIL DATA ---
-const realEmail = {
-  subject: "Re: Urgent: Q3 Design Assets & Final Invoice",
-  // Note: I cleaned the newlines slightly to match how an API would deliver it
-  text: `Hi Team, Thanks for the meeting on Jan 12th, it was very productive. 
-  Two quick updates: 
-  1. I've attached the assets in prev mail created since the start of the project. 
-  2. The final invoice is due by EOD next Tuesday. Please ensure this is processed. 
-  
-  Also, regarding the new timeline: Can you confirm if the budget was approved? 
-  We cannot proceed without that confirmation. Let me know your thoughts. 
-  Best, Alex`,
-  
-  // CRITICAL FLAG:
-  isIncoming: true, 
-  date: new Date() // Simulating 'Now'
+const inboundDeadlineEmail = {
+  id: "msg-deadline-1",
+  subject: "Data room access window closes COB Wednesday",
+  text: `Hi Liam,
+The diligence partners opened the data room today, but they'll revoke access at close of business on Wednesday.
+Please upload the revised cash-flow workbook before they lock it down; otherwise we miss the committee readout.
+Let me know if Box permissions give you trouble.`,
+  isIncoming: true,
+  timestamp: now,
 };
 
-const threadState = {
-  lastMessageFrom: "them" // They sent the last message, so I might need to reply
+const deadlineThread = {
+  messages: [
+    {
+      id: "msg-out-earlier",
+      subject: "Re: Data room access window closes COB Wednesday",
+      text: "Thanks for the heads up—I'll verify the workbook once finance signs off.",
+      isIncoming: false,
+      timestamp: now - (24 * 60 * 60 * 1000),
+    },
+  ],
+  lastMessageFrom: "them",
+  lastMessageAt: now,
 };
 
-console.log("------------------------------------------------");
-console.log("1. TESTING DEADLINE (Target: Next Tuesday)");
-const deadlineResult = evaluateDeadline(realEmail);
-console.log("Result:", deadlineResult.hasDeadline ? "✅ DEADLINE FOUND" : "❌ FAILED");
-console.log("Date Found:", deadlineResult.deadlineAt);
-console.log("Snippet:", deadlineResult.extractedSnippet);
-console.log("Score:", deadlineResult.deadlineConfidence);
+const followUpEmail = {
+  id: "msg-out-followup",
+  subject: "Re: Status of Sapphire refund approvals",
+  text: `Hi Dana,
+Circling back on the Sapphire refunds—did finance push the batch through yet?
+Once you hear from Treasury, could you send a quick note so we know when to notify customers?
+We can't close the incident report until you confirm.`,
+  isIncoming: false,
+  timestamp: now - seventyTwoHours,
+};
 
-console.log("\n------------------------------------------------");
-console.log("2. TESTING NEEDS REPLY (Target: True)");
-const replyResult = evaluateNeedsReply(realEmail, threadState);
-console.log("Result:", replyResult.needsReply ? "✅ NEEDS REPLY" : "❌ FAILED");
-console.log("Score:", replyResult.needsReplyScore);
-console.log("Reason:", replyResult.needsReplyReason);
-console.log("------------------------------------------------");
+const followUpThread = {
+  messages: [
+    {
+      id: "msg-in-older",
+      subject: "Status of Sapphire refund approvals",
+      text: "Thanks, we'll sync with Treasury and get back to you.",
+      isIncoming: true,
+      timestamp: now - (5 * 24 * 60 * 60 * 1000),
+    },
+    followUpEmail,
+  ],
+  lastMessageFrom: "me",
+  lastMessageAt: followUpEmail.timestamp,
+};
+
+function runScenario(label, email, thread) {
+  console.log(`\n=== ${label} ===`);
+  console.log(evaluateActions(email, thread));
+}
+
+runScenario("Deadline detection", inboundDeadlineEmail, deadlineThread);
+runScenario("Follow-up detection", followUpEmail, followUpThread);

@@ -1,4 +1,5 @@
 import { NEEDS_REPLY_THRESHOLD } from "./types.js";
+import { isIncomingMessage, getMessageTimestamp } from "./actionUtils.js";
 
 /**
  * PRODUCTION 'NEEDS REPLY' DETECTOR (TUNED)
@@ -29,7 +30,29 @@ const STRONG_REQUEST_PATTERNS = [
   /deadline/i
 ];
 
-// 2. WEAK SIGNALS: Polite phrases (+0.15)
+// 2. DECISION / APPROVAL TRIGGERS (+0.35)
+const DECISION_PATTERNS = [
+  /approve/i,
+  /sign\s*off/i,
+  /green\s*light/i,
+  /permission/i,
+  /consent/i,
+  /need\s+your\s+(decision|input|approval)/i,
+  /can\s+we\s+proceed/i,
+];
+
+// 3. RESOURCE / DATA REQUESTS (+0.25)
+const RESOURCE_PATTERNS = [
+  /send\s+over/i,
+  /share\s+the/i,
+  /forward\s+the/i,
+  /provide\s+the/i,
+  /attach(ed)?\s+again/i,
+  /upload\s+the/i,
+  /grant\s+access/i,
+];
+
+// 4. WEAK SIGNALS: Polite phrases (+0.15)
 const POLITE_REQUEST_PATTERNS = [
   /please/i,
   /could\s+you/i,
@@ -39,7 +62,7 @@ const POLITE_REQUEST_PATTERNS = [
   /appreciate/i
 ];
 
-// 3. NEGATIVE SIGNALS: Automated mail (-1.0)
+// 5. NEGATIVE SIGNALS: Automated or FYI mail (strong penalty)
 const AUTOMATED_PATTERNS = [
   /unsubscribe/i,
   /view\s+in\s+browser/i,
@@ -52,7 +75,16 @@ const AUTOMATED_PATTERNS = [
   /receipt/i,
   /order\s+confirmed/i,
   /verify\s+your\s+email/i,
-  /manage\s+preferences/i
+  /manage\s+preferences/i,
+  /this\s+is\s+an\s+automated/i,
+];
+
+const FYI_ONLY_PATTERNS = [
+  /for\s+your\s+information/i,
+  /\bfyi\b/i,
+  /no\s+reply\s+(needed|required)/i,
+  /just\s+sharing/i,
+  /just\s+so\s+you\s+know/i,
 ];
 
 // 4. URGENCY KEYWORDS (Subject line)
@@ -64,32 +96,33 @@ const URGENCY_KEYWORDS = [
 const DIRECT_QUESTION_START = /^(who|what|where|when|why|how|is|are|do|does|can|could|would|will)\s/i;
 
 
-export function evaluateNeedsReply(email, thread) {
+export function evaluateNeedsReply(email, context = {}) {
   const result = {
     needsReply: false,
     needsReplyScore: 0,
     needsReplyReason: null,
     confidence: 0,
+    debug: {},
   };
 
   if (!email) return result;
 
   // 1. Directionality Check
   // We never need to reply to our own emails
-  if (!email.isIncoming) return result;
-  
-  // If I already replied, the ball is in their court.
-  if (thread && thread.lastMessageFrom === "me") {
-    return result; 
+  if (!isIncomingMessage(email, true)) return result;
+
+  if (context?.lastMessageFrom === "me" && context?.lastMessage !== email) {
+    return result;
   }
 
-  const text = (email.text || "").toLowerCase();
+  const text = (email.text || email.plainText || "").toLowerCase();
   const subject = (email.subject || "").toLowerCase();
-  const fullText = `${subject} \n ${text}`;
+  const fullText = `${subject}\n${text}`;
 
   // 2. SAFETY CHECK: Automated/Marketing Filter
-  if (AUTOMATED_PATTERNS.some(p => text.match(p))) {
-    return result; 
+  if (AUTOMATED_PATTERNS.some(p => p.test(fullText))) {
+    result.debug.automation = true;
+    return result;
   }
 
   let score = 0;
@@ -97,58 +130,92 @@ export function evaluateNeedsReply(email, thread) {
 
   // 3. SCORING ENGINE
 
-  // A. Check for Strong Requests
+  const addScore = (delta, reason) => {
+    if (delta === 0) return;
+    score += delta;
+    if (reason) reasons.push(reason);
+  };
+
+  // A. Strong Requests
   for (const pattern of STRONG_REQUEST_PATTERNS) {
-    if (fullText.match(pattern)) {
-      score += 0.5; // Strong Boost
-      reasons.push("strong_request");
-      break; 
+    if (pattern.test(fullText)) {
+      addScore(0.55, "strong_request");
+      break;
     }
   }
 
-  // B. Check for Question Marks + Sentence Structure
-  const questions = fullText.match(/[^.!?\n]+[?]/g);
-  if (questions) {
-    for (const q of questions) {
-      const trimmed = q.trim();
-      
-      // Short, punchy question?
-      if (trimmed.length < 50) {
-        score += 0.3;
-        reasons.push("short_question");
-      }
-      
-      // Direct Question word?
-      if (DIRECT_QUESTION_START.test(trimmed)) {
-        score += 0.2;
-        reasons.push("direct_question");
-      }
-    }
-    // Base score just for having a question mark
-    if (score === 0 || score === 0.5) score += 0.2; 
+  // B. Decision / Approval words
+  if (DECISION_PATTERNS.some(p => p.test(fullText))) {
+    addScore(0.35, "decision_needed");
   }
 
-  // C. Check for Polite Requests
-  if (POLITE_REQUEST_PATTERNS.some(p => fullText.match(p))) {
-    score += 0.15;
+  // C. Resource Requests
+  if (RESOURCE_PATTERNS.some(p => p.test(fullText))) {
+    addScore(0.25, "resource_request");
   }
 
-  // D. Urgency Boost (Subject line)
+  // D. Question Density
+  const sentenceQuestions = fullText.match(/[^.!?\n]+[?]/g) || [];
+  const questionCount = (fullText.match(/\?/g) || []).length;
+  if (questionCount > 0) {
+    addScore(Math.min(0.4, questionCount * 0.12), "question_marks");
+  }
+  for (const q of sentenceQuestions) {
+    const trimmed = q.trim();
+    if (trimmed.length < 50) addScore(0.2, "short_question");
+    if (DIRECT_QUESTION_START.test(trimmed)) addScore(0.15, "direct_question");
+  }
+
+  // E. Polite requests (weak boost)
+  if (POLITE_REQUEST_PATTERNS.some(p => p.test(fullText))) {
+    addScore(0.15, "polite_request");
+  }
+
+  // F. Urgency keywords in subject
   if (URGENCY_KEYWORDS.some(k => subject.includes(k))) {
-    score += 0.35;
-    reasons.push("marked_urgent");
+    addScore(0.35, "marked_urgent");
   }
 
-  // E. Length Penalty
-  if (text.length > 2000) score -= 0.1;
-  if (text.length < 200) score += 0.1;
+  // G. Attachment Mentions
+  if (/attach(ed)?/i.test(fullText) && !(email.attachments || []).length) {
+    addScore(0.1, "attachment_reference");
+  }
 
+  // H. FYI-only statements
+  if (FYI_ONLY_PATTERNS.some(p => p.test(fullText))) {
+    addScore(-0.4, "fyi_only");
+  }
 
-  // 4. FINAL CALCULATION
-  score = Math.min(score, 1); // Cap at 1.0
-  
-  result.needsReplyScore = parseFloat(score.toFixed(2));
+  // I. Length heuristics
+  if (text.length > 2500) addScore(-0.15, "long_body_penalty");
+  if (text.length < 180 && questionCount === 0) addScore(-0.2, "too_short");
+
+  // J. Conversation context
+  const incomingAt = getMessageTimestamp(email);
+  const lastOutgoingAt = context?.lastOutgoingAt ? new Date(context.lastOutgoingAt) : null;
+  if (lastOutgoingAt) {
+    const hoursSinceReply = (incomingAt - lastOutgoingAt) / (1000 * 60 * 60);
+    if (hoursSinceReply > 2 && hoursSinceReply < 96) {
+      addScore(0.1, "reply_after_my_last");
+    }
+  }
+
+  // K. Multiple actionable cues escalate confidence
+  if (reasons.includes("strong_request") && (reasons.includes("marked_urgent") || reasons.includes("decision_needed"))) {
+    addScore(0.15, "compound_signal");
+  }
+
+  // Negative floor + cap
+  score = Math.min(Math.max(score, 0), 1);
+
+  result.needsReplyScore = Number(score.toFixed(2));
   result.needsReplyReason = reasons.join(", ");
+  result.confidence = result.needsReplyScore;
+  result.debug = {
+    reasons,
+    questionCount,
+    textLength: text.length,
+  };
 
   if (score >= NEEDS_REPLY_THRESHOLD) {
     result.needsReply = true;

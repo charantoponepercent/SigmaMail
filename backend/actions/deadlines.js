@@ -1,4 +1,5 @@
 import * as chrono from 'chrono-node';
+import { isIncomingMessage } from "./actionUtils.js";
 
 // --- CONFIGURATION ---
 
@@ -24,13 +25,47 @@ const POST_DATE_TRIGGERS = [
   "deadline", "due date", "cutoff"
 ];
 
+const RELATIVE_FALLBACK_PATTERNS = [
+  {
+    regex: /(due|need|please|kindly|can\s+you|send|share).{0,40}(eod|end of day|close of business|cob)/i,
+    resolver: (reference) => {
+      const date = new Date(reference);
+      date.setHours(17, 0, 0, 0);
+      return date;
+    },
+    snippetLabel: "EOD",
+  },
+  {
+    regex: /(due|need|please|kindly|can\s+you|send|share).{0,40}(tomorrow|tmrw)/i,
+    resolver: (reference) => {
+      const date = new Date(reference);
+      date.setDate(date.getDate() + 1);
+      date.setHours(12, 0, 0, 0);
+      return date;
+    },
+    snippetLabel: "tomorrow",
+  },
+  {
+    regex: /(due|need|please|kindly|can\s+you|send|share).{0,40}(end of week|eow|next week)/i,
+    resolver: (reference) => {
+      const date = new Date(reference);
+      const day = date.getDay();
+      const daysUntilFriday = (5 - day + 7) % 7 || 5;
+      date.setDate(date.getDate() + daysUntilFriday);
+      date.setHours(17, 0, 0, 0);
+      return date;
+    },
+    snippetLabel: "end of week",
+  },
+];
+
 /**
  * PRODUCTION DEADLINE EVALUATOR
  * Uses NLP to extract dates and a proximity scoring engine to determine intent.
  * * @param {Object} email - { subject: string, text: string }
  * @returns {Object} Result object
  */
-export function evaluateDeadline(email) {
+export function evaluateDeadline(email, context = {}) {
   const result = {
     hasDeadline: false,
     deadlineAt: null,
@@ -41,6 +76,10 @@ export function evaluateDeadline(email) {
   };
 
   if (!email || (!email.subject && !email.text)) return result;
+
+  if (context && context.lastMessage === email && !isIncomingMessage(email, true)) {
+    return result;
+  }
 
   // 1. Text Normalization
   // We combine subject and body. Subject is weighted heavily in scoring later.
@@ -55,7 +94,18 @@ export function evaluateDeadline(email) {
   // forwardDate: true ensures "Friday" implies the *coming* Friday, not past.
   const parsedResults = chrono.parse(fullText, referenceDate, { forwardDate: true });
 
-  if (parsedResults.length === 0) return result;
+  if (parsedResults.length === 0) {
+    const fallback = detectRelativeDeadline(fullText, referenceDate);
+    if (fallback) {
+      result.hasDeadline = true;
+      result.deadlineAt = fallback.date;
+      result.deadlineSource = 'heuristic-relative';
+      result.deadlineConfidence = fallback.score;
+      result.extractedSnippet = fallback.snippet;
+      result.reasoning = fallback.reasoning;
+    }
+    return result;
+  }
 
   // 3. Candidate Scoring Engine
   let bestCandidate = null;
@@ -159,4 +209,20 @@ export function evaluateDeadline(email) {
   }
 
   return result;
+}
+
+function detectRelativeDeadline(fullText, referenceDate = new Date()) {
+  const normalized = fullText.toLowerCase();
+  for (const pattern of RELATIVE_FALLBACK_PATTERNS) {
+    const match = normalized.match(pattern.regex);
+    if (!match) continue;
+    const resolvedDate = pattern.resolver(referenceDate);
+    return {
+      date: resolvedDate,
+      score: 0.62,
+      snippet: match[0] || pattern.snippetLabel,
+      reasoning: `relative_${pattern.snippetLabel}`,
+    };
+  }
+  return null;
 }

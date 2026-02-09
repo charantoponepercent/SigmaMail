@@ -1,0 +1,72 @@
+[
+  {
+    "label": "Work: sprint retro + deliverables",
+    "expected": "Work",
+    "email": {
+      "subject": "Sprint retro deck & client review follow ups",
+      "text": "Hi team,\nWe need the sprint 42 retro deck finalized before tomorrow's client sync.\nPlease add the Jira links for the performance tasks and drop your talking points in the Confluence page.\nI'll compile everything at 4pm.\nThanks,\nAria",
+      "from": "aria@corp.com"
+    }
+  },
+  {
+    "label": "Stealth Promotions: limited drop disguised as personal note",
+    "expected": "Promotions",
+    "email": {
+      "subject": "Heads up before tomorrow 🌘",
+      "html": "<!doctype html><html><body style=\"margin:0;\"><table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr><td align=\"center\"><table width=\"640\" cellpadding=\"0\" cellspacing=\"0\"><tr><td style=\"font-size:0px;display:none;opacity:0;\">Seat expires soon</td></tr><tr><td style=\"padding:24px;\">Hey Mira,<br/>This private preview closes at 09:00. Confirm your spot using the secure link below.<br/><br/><a href=\"https://links.mktg-cloud.com/redirect?utm_campaign=drop93&utm_medium=email&utm_source=private\">Confirm access</a><br/>Prefer text-only? Hit <a href=\"https://links.mktg-cloud.com/view?mode=plain\">this view</a>.</td></tr></table></td></tr></table><img src=\"https://pixel.trk-mail.net/open.gif\" width=\"1\" height=\"1\"/></body></html>",
+      "text": "Hey Mira, this private preview closes at 09:00. Confirm your spot using the secure link below.\nConfirm access: https://links.mktg-cloud.com/redirect?utm_campaign=drop93&utm_medium=email&utm_source=private\nPrefer text-only? https://links.mktg-cloud.com/view?mode=plain",
+      "from": "updates@news-cloud.click",
+      "headers": {
+        "X-Mailer": "Braze Marketing Suite"
+      }
+    }
+  },
+  {
+    "label": "Subscriptions: template leak newsletter",
+    "expected": "Subscriptions",
+    "email": {
+      "subject": "Builder Circle evening recap",
+      "text": "Builder Circle keeps you in the loop.\nToday we cover: perf budgets, rollout calendar, beta invites.\nGrab the notes: https://r.email.loop.io/c/Collective?mc_cid=bd12&utm_medium=mail\nSee why {{first_name}} earned access and lock your seat for next week.\nUpdate preferences: https://loop-news.com/manage?mc_eid=123",
+      "from": "hello@loop-news.com",
+      "headers": {
+        "List-Unsubscribe": "<mailto:leave@loop-news.com>, <https://loop-news.com/leave?token=mkt_tok>"
+      }
+    }
+  },
+  {
+    "label": "Finance: account alert",
+    "expected": "Finance",
+    "email": {
+      "subject": "Action Required: Credit card statement available",
+      "text": "Dear customer,\nYour credit card statement for February is ready. Current balance is INR 82,400 and payment is due on 20 Feb.\nPlease log in to verify recent transactions and schedule your payment.",
+      "from": "alerts@hdfcbank.com"
+    }
+  },
+  {
+    "label": "Spam: fake shipping collector",
+    "expected": "Spam",
+    "email": {
+      "subject": "Re: parcel on hold for verification",
+      "text": "We couldn't deliver your parcel until you settle the clearance cost.\nPay the micro-fee now: https://t.co/ship-verify -> https://bit.ly/verify-node\nOnce done we'll double your refund as a loyalty bonus. Act in the next 10 minutes to keep your locker active.",
+      "from": "notify@courier-centre.xyz"
+    }
+  },
+  {
+    "label": "Personal Social update",
+    "expected": "Social",
+    "email": {
+      "subject": "Ella mentioned you in #product-lounge",
+      "text": "Ella dropped a new note in the Product Lounge channel: “Can you review the snippet before we send?”\nJump back into the conversation to reply or react.",
+      "from": "slack@notifications.slack.com"
+    }
+  },
+  {
+    "label": "Bills: SaaS renewal reminder",
+    "expected": "Bills",
+    "email": {
+      "subject": "Your Notion plan renews on 15 Feb",
+      "text": "Hi there,\nYour Notion Plus subscription renews on 15 Feb 2026. The invoice for INR 9,999 will be auto-charged to your card ending 4242.\nDownload invoice: https://notion.so/invoice/abc?utm_source=billing\nNeed to update payment details? Manage your subscription inside the workspace settings.",
+      "from": "billing@notion.so"
+    }
+  }
+]

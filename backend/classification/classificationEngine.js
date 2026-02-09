@@ -2,7 +2,8 @@
 import { classifyHeuristic } from "./heuristics.js";
 import CATEGORIZATION_RULES from "./categorizationRules.js";
 import { generateEmbedding } from "../utils/embedding.js";
-import Category from "../models/Category.js";
+import { CLASSIFICATION_WEIGHTS, CATEGORY_PRIORS, CLASSIFIER_FEATURE_FLAGS, STRUCTURAL_THRESHOLDS } from "./config.js";
+import { getCategoryEmbeddings } from "./categoryCache.js";
 
 /**
  * Unified classification engine
@@ -31,6 +32,154 @@ function applyPhraseRules(text) {
     }
   }
   return scores;
+}
+
+function extractStructuralSignals(email = {}) {
+  const subject = normalizeText(email.subject);
+  const text = normalizeText(`${email.text || ""} ${email.plainText || ""}`);
+  const rawCombined = `${email.subject || ""}\n${email.text || ""}\n${email.html || ""}\n${email.plainText || ""}`;
+  const htmlBlob = (email.html || email.text || "");
+  const from = normalizeText(email.from || "");
+  const signals = CATEGORIZATION_RULES.STRUCTURAL_SIGNALS || {};
+  const scores = {};
+  CATEGORIZATION_RULES.CATEGORY_LIST.forEach(c => (scores[c] = 0));
+
+  const boost = (cat, value) => { scores[cat] = (scores[cat] || 0) + value; };
+
+  const containsAny = (haystack, arr = []) => arr.some(tok => tok && haystack.includes(tok.toLowerCase()));
+
+  if (subject && containsAny(subject, signals.NEWSLETTER_SUBJECT_HINTS)) {
+    boost("Subscriptions", 1.5);
+    boost("Promotions", 0.5);
+  }
+
+  if (containsAny(text, signals.NEWSLETTER_FOOTERS)) {
+    boost("Subscriptions", 2);
+  }
+
+  if (containsAny(text, signals.MARKETING_PLATFORM_MENTIONS)) {
+    boost("Subscriptions", 1);
+  }
+
+  if (containsAny(text, signals.ATTENTION_PHRASES) || containsAny(text, signals.EXCESSIVE_PUNCTUATION)) {
+    boost("Spam", 1.2);
+  }
+
+  if (containsAny(text, signals.LINK_SHORTENERS)) {
+    boost("Spam", 1.5);
+  }
+
+  if (signals.SUSPICIOUS_SENDER_TLDS?.some(tld => from.endsWith(tld))) {
+    boost("Spam", 1.3);
+  }
+
+  if (containsAny(from, signals.NO_REPLY_IDENTIFIERS)) {
+    boost("Subscriptions", 0.7);
+  }
+
+  const localPart = (email.from || "").split("@")[0]?.toLowerCase() || "";
+  if (signals.BULK_SENDER_LOCALPARTS?.some(lp => localPart.includes(lp))) {
+    boost("Subscriptions", 0.6);
+  }
+
+  if (containsAny(subject, signals.STEALTH_NEWSLETTER_HINTS) || containsAny(text, signals.STEALTH_NEWSLETTER_HINTS)) {
+    boost("Subscriptions", 1.1);
+  }
+
+  const linkMatches = rawCombined.match(/https?:\/\/[^\s"')<>]+/gi) || [];
+  const thresholds = {
+    linkHeavy: signals.THRESHOLDS?.LINK_HEAVY || STRUCTURAL_THRESHOLDS.linkHeavy,
+    tableHeavy: signals.THRESHOLDS?.TABLE_HEAVY || STRUCTURAL_THRESHOLDS.tableHeavy,
+  };
+
+  if (linkMatches.length >= thresholds.linkHeavy) {
+    boost("Promotions", 1.2);
+    boost("Subscriptions", 0.6);
+  }
+
+  const utmLinks = linkMatches.filter(url => signals.TRACKING_PARAMS?.some(tok => url.toLowerCase().includes(tok)));
+  if (utmLinks.length > 0) {
+    boost("Subscriptions", 1.2);
+    boost("Promotions", 0.8);
+  }
+
+  if (linkMatches.some(url => signals.REDIRECT_DOMAINS?.some(dom => url.toLowerCase().includes(dom)))) {
+    boost("Spam", 0.7);
+    boost("Promotions", 0.6);
+  }
+
+  const tableCount = (htmlBlob.match(/<table/gi) || []).length;
+  const pixelHint = signals.HIDDEN_PIXEL_HINTS?.some(h => htmlBlob.toLowerCase().includes(h));
+  const htmlHeavy = signals.HTML_HEAVY_MARKERS?.some(marker => htmlBlob.toLowerCase().includes(marker));
+  if (htmlHeavy && tableCount >= thresholds.tableHeavy) {
+    boost("Promotions", 1);
+    boost("Subscriptions", 0.5);
+  }
+
+  if (pixelHint) {
+    boost("Subscriptions", 0.9);
+    boost("Spam", 0.5);
+  }
+
+  const templateLeak = containsAny(text, signals.TEMPLATE_TOKENS);
+  if (templateLeak) {
+    boost("Subscriptions", 0.9);
+  }
+
+  if (signals.STEALTH_CALL_TO_ACTIONS?.some(phrase => rawCombined.toLowerCase().includes(phrase))) {
+    boost("Promotions", 0.7);
+    boost("Subscriptions", 0.3);
+  }
+
+  if (signals.PROMO_STEALTH_HINTS?.some(phrase => rawCombined.toLowerCase().includes(phrase))) {
+    boost("Promotions", 1.6);
+    boost("Subscriptions", -0.9);
+  }
+
+  if (signals.BILLING_KEYWORDS?.some(term => rawCombined.toLowerCase().includes(term))) {
+    boost("Bills", 1.3);
+    boost("Finance", 0.4);
+    boost("Subscriptions", -0.5);
+  }
+
+  if (signals.SOCIAL_SYSTEM_HINTS?.some(hint => rawCombined.toLowerCase().includes(hint))) {
+    boost("Social", 1.2);
+    boost("Work", -0.3);
+  }
+
+  const listUnsubHeader = getHeaderCaseInsensitive(email.headers, "List-Unsubscribe");
+  if (listUnsubHeader) {
+    boost("Subscriptions", 1.5);
+  }
+
+  const emojiPattern = /[\u{1F300}-\u{1FAFF}]/u;
+  if (emojiPattern.test(email.subject || "") && (email.subject || "").length <= 60) {
+    boost("Promotions", 0.6);
+  }
+
+  const hiddenStyle = /(font-size:\s*0|display:\s*none|opacity:\s*0|visibility:\s*hidden)/i.test(htmlBlob);
+  if (hiddenStyle && linkMatches.length >= 3) {
+    boost("Spam", 0.3);
+  }
+
+  const marketingHeaderHit = Object.values(email.headers || {}).some(val =>
+    typeof val === "string" && signals.MARKETING_PLATFORM_MENTIONS?.some(tok => val.toLowerCase().includes(tok))
+  );
+  if (marketingHeaderHit) {
+    boost("Subscriptions", 0.8);
+    boost("Promotions", 0.8);
+  }
+
+  return scores;
+}
+
+function getHeaderCaseInsensitive(headers = {}, key) {
+  if (!headers) return null;
+  const target = key.toLowerCase();
+  for (const [k, v] of Object.entries(headers)) {
+    if (k.toLowerCase() === target) return v;
+  }
+  return null;
 }
 
 function applyExclusionRules(text) {
@@ -74,7 +223,7 @@ async function semanticSimilarity(embedding) {
 
   if (!embedding || !Array.isArray(embedding)) return out;
 
-  const cats = await Category.find({}).lean();
+  const cats = await getCategoryEmbeddings();
   if (!cats || cats.length === 0) return out;
 
   // compute cosine similarity to each category seed (safe numeric)
@@ -99,13 +248,13 @@ async function semanticSimilarity(embedding) {
  * mergeScores
  * - Accepts raw layer scores and returns normalized candidate list + top
  */
-function mergeScores({ heuristic, phrase, semantic, exclusion, weights }) {
-  // default safe weights (tunable) — sum not required but we normalize after fusion
+function mergeScores({ heuristic, phrase, semantic, exclusion, structural, weights, priors }) {
   const W = {
-    HEURISTIC: weights?.heuristic ?? 0.45,
-    PHRASE:   weights?.phrase   ?? 0.25,
-    SEMANTIC: weights?.semantic ?? 0.25,
-    EXCLUSION: weights?.exclusion ?? 0.20,
+    HEURISTIC: weights?.heuristic ?? CLASSIFICATION_WEIGHTS.heuristic,
+    PHRASE: weights?.phrase ?? CLASSIFICATION_WEIGHTS.phrase,
+    SEMANTIC: weights?.semantic ?? CLASSIFICATION_WEIGHTS.semantic,
+    EXCLUSION: weights?.exclusion ?? CLASSIFICATION_WEIGHTS.exclusion,
+    STRUCTURAL: weights?.structural ?? CLASSIFICATION_WEIGHTS.structural,
   };
 
   const fusedRaw = {};
@@ -114,11 +263,18 @@ function mergeScores({ heuristic, phrase, semantic, exclusion, weights }) {
     const p = phrase?.[cat] || 0;
     const s = semantic?.[cat] || 0;
     const e = exclusion?.[cat] || 0;
+    const str = structural?.[cat] || 0;
+    const prior = priors?.[cat] ?? CATEGORY_PRIORS[cat] ?? 0;
 
     // combine: heuristic/phrase are counts (small ints), semantic is cosine [-1..1], exclusion is penalty/boost
     // scale semantic to same range by multiplying by a factor (since it's usually <= 1)
     const semanticScaled = s * 5; // 5 is a chosen scale so cosine ~0.6 => 3.0 which is comparable to phrase signals
-    fusedRaw[cat] = (W.HEURISTIC * h) + (W.PHRASE * p) + (W.SEMANTIC * semanticScaled) + (W.EXCLUSION * e);
+    fusedRaw[cat] = (W.HEURISTIC * h)
+      + (W.PHRASE * p)
+      + (W.SEMANTIC * semanticScaled)
+      + (W.EXCLUSION * e)
+      + (W.STRUCTURAL * str)
+      + prior;
   });
 
   // Normalize fusedRaw to 0..1 for interpretability
@@ -145,6 +301,9 @@ function mergeScores({ heuristic, phrase, semantic, exclusion, weights }) {
  */
 export async function classifyEmailFull(email = {}, options = {}) {
   const combinedText = `${email.subject || ""}\n${email.text || ""}\n${email.plainText || ""}`.trim().toLowerCase();
+  const disableSemantic = options.disableSemantic ?? !CLASSIFIER_FEATURE_FLAGS.useSemantic;
+  const appliedWeights = { ...CLASSIFICATION_WEIGHTS, ...(options.weights || {}) };
+  const appliedPriors = { ...CATEGORY_PRIORS, ...(options.priors || {}) };
 
   // 1) Heuristic (L1 + L3)
   const heuristic = classifyHeuristic({
@@ -159,7 +318,7 @@ export async function classifyEmailFull(email = {}, options = {}) {
 
   // 3) Embedding: use provided or generate
   let embedding = email.embedding || null;
-  if (!embedding) {
+  if (!disableSemantic && !embedding) {
     try {
       embedding = await generateEmbedding(combinedText);
     } catch (err) {
@@ -168,18 +327,28 @@ export async function classifyEmailFull(email = {}, options = {}) {
   }
 
   // 4) Semantic similarity (L5)
-  const semantic = await semanticSimilarity(embedding);
+  let semantic = {};
+  if (!disableSemantic) {
+    semantic = await semanticSimilarity(embedding);
+  } else {
+    CATEGORIZATION_RULES.CATEGORY_LIST.forEach(cat => (semantic[cat] = 0));
+  }
 
   // 5) Exclusion rules (L4)
   const exclusion = applyExclusionRules(combinedText);
 
-  // 6) Merge with tunable weights
+  // 6) Structural newsletter/spam signals (post-heuristic, pre-fusion)
+  const structural = extractStructuralSignals(email);
+
+  // 7) Merge with tunable weights
   const merged = mergeScores({
     heuristic,
     phrase,
     semantic,
     exclusion,
-    weights: options.weights || undefined,
+    structural,
+    weights: appliedWeights,
+    priors: appliedPriors,
   });
 
   // return full debug payload
@@ -191,9 +360,12 @@ export async function classifyEmailFull(email = {}, options = {}) {
     phrase,
     semantic,
     exclusion,
+    structural,
     debug: {
-      weights: options.weights || { heuristic: 0.2, phrase: 0.2, semantic: 0.45, exclusion: 0.15 },
-      fusedRaw: merged.fusedRaw
+      weights: appliedWeights,
+      fusedRaw: merged.fusedRaw,
+      disableSemantic,
+      priors: appliedPriors,
     }
   };
 }

@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "start": "node index.js",
-    "dev": "nodemon index.js"
+    "dev": "nodemon index.js",
+    "classify:samples": "node classification/testSamples.js",
+    "classify:eval": "node classification/runDatasetEval.js"
   },
   "keywords": [],
   "author": "",
