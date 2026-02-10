@@ -97,6 +97,7 @@ export default function Dashboard() {
   const [digestOpen, setDigestOpen] = useState(false);
   const [digestText, setDigestText] = useState<any>("");
   const [digestLoading, setDigestLoading] = useState(false);
+  const [orchestratorOpen, setOrchestratorOpen] = useState(false);
   const [orchestratorStatus, setOrchestratorStatus] = useState<OrchestratorStatusItem[]>([]);
   const [orchestratorLoading, setOrchestratorLoading] = useState(false);
   const sseRef = useRef<EventSource | null>(null);
@@ -387,6 +388,11 @@ export default function Dashboard() {
     }
   }
 
+  function showOrchestrator() {
+    setOrchestratorOpen(true);
+    loadOrchestratorStatus();
+  }
+
   async function disconnectAccount(email: string) {
     const token = localStorage.getItem("token");
     try {
@@ -477,6 +483,7 @@ export default function Dashboard() {
         setShowDialog={setShowDialog}
         setAccountToDisconnect={setAccountToDisconnect}
         onShowDigest={showDigest}
+        onShowOrchestrator={showOrchestrator}
       />
 
       {/* MAIN CONTENT AREA */}
@@ -491,13 +498,6 @@ export default function Dashboard() {
             setActiveCategory={setActiveCategory}
             sourceMessages={sourceMessages}
             setMessages={setMessages}
-          />
-
-          <OrchestratorStatusPanel
-            items={orchestratorStatus}
-            loading={orchestratorLoading}
-            onRefresh={loadOrchestratorStatus}
-            onClear={clearOrchestratorStatus}
           />
 
           {showNewTag && (
@@ -538,6 +538,15 @@ export default function Dashboard() {
         onClose={() => setDigestOpen(false)}
         digestText={digestText}
         loading={digestLoading}
+      />
+
+      <OrchestratorStatusPanel
+        open={orchestratorOpen}
+        onClose={() => setOrchestratorOpen(false)}
+        items={orchestratorStatus}
+        loading={orchestratorLoading}
+        onRefresh={loadOrchestratorStatus}
+        onClear={clearOrchestratorStatus}
       />
 
       <DisconnectDialog

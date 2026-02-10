@@ -6,15 +6,13 @@ import {
   Inbox,
   RefreshCw,
   BookOpen,
+  Sparkles,
   AlertCircle,
   Clock,
   Reply,
   ChevronsUpDown,
-  PlusCircle,
   LogOut,
-  Settings,
   Trash2,
-  User,
   User2,
   PlusIcon,
 } from "lucide-react";
@@ -40,6 +38,7 @@ type Props = {
   setShowDialog: (v: boolean) => void;
   setAccountToDisconnect: (email: string | null) => void;
   onShowDigest?: () => void;
+  onShowOrchestrator?: () => void;
 };
 
 export default function Sidebar({
@@ -53,12 +52,9 @@ export default function Sidebar({
   setShowDialog,
   setAccountToDisconnect,
   onShowDigest,
+  onShowOrchestrator,
 }: Props) {
   
-  // Helper to resolve the active account object
-  const activeAccountObj = accounts.find((a) => a.email === selectedAccount) || accounts[0];
-  const activeEmail = activeAccountObj?.email || "No Account";
-
   return (
     <aside className="w-[220px] ml-2 mt-2 mb-2 flex flex-col flex-shrink-0 overflow-hidden h-[calc(100vh-16px)]">
       {/* ========================================================= */}
@@ -164,8 +160,16 @@ export default function Sidebar({
         </h3>
 
         <div
+          onClick={() => onShowOrchestrator && onShowOrchestrator()}
+          className="mt-3 flex items-center gap-3 rounded-lg border border-transparent px-3 py-2.5 text-gray-700 transition-all hover:bg-gray-100 cursor-pointer"
+        >
+          <Sparkles className="w-4 h-4 text-indigo-600" />
+          <span className="text-[13.5px] font-medium">AI Orchestrator</span>
+        </div>
+
+        <div
           onClick={() => onShowDigest && onShowDigest()}
-          className={`mt-3 flex items-center gap-3 bg-transparent hover:bg-gray-100 rounded-lg px-3 py-2.5 cursor-pointer transition-all text-gray-700`}
+          className="mt-1 flex items-center gap-3 rounded-lg border border-transparent px-3 py-2.5 text-gray-700 transition-all hover:bg-gray-100 cursor-pointer"
         >
           <BookOpen className="w-4 h-4 text-purple-600" />
           <span className="text-[13.5px] font-medium">AI Daily Digest</span>

@@ -1,6 +1,16 @@
 "use client";
 
-import { X } from "lucide-react";
+import {
+  CalendarDays,
+  Clock3,
+  FileText,
+  Mail,
+  Sparkles,
+  Target,
+  TrendingUp,
+  UserRound,
+  X,
+} from "lucide-react";
 
 type DigestAction = {
   text: string;
@@ -62,186 +72,167 @@ export default function DigestModal({ open, onClose, digestText, loading }: Prop
         }))
       : [];
   const bills = Array.isArray(digest.sections?.bills) ? digest.sections.bills : [];
+  const highlights = Array.isArray(digest.highlights) ? digest.highlights.slice(0, 6) : [];
+  const actions = Array.isArray(digest.actions) ? digest.actions.slice(0, 8) : [];
+  const topSenders = Array.isArray(digest.topSenders) ? digest.topSenders.slice(0, 6) : [];
+  const summary = digest.summary || "No digest available.";
+  const strategy = digest?._meta?.strategy || "unknown";
+  const model = digest?._meta?.model || "local-route";
+  const confidence = typeof digest?._meta?.confidence === "number"
+    ? `${Math.round(digest._meta.confidence * 100)}%`
+    : "-";
+  const totalSignals = meetings.length + bills.length + actions.length;
 
   return (
-    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[200]">
-      <div className="bg-white rounded-2xl shadow-2xl w-[650px] max-h-[85vh] flex flex-col overflow-hidden border border-gray-100 transition-all duration-300">
-        
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md">
-          <h2 className="text-lg font-bold tracking-wide">AI Daily Digest</h2>
-          <button onClick={onClose} className="p-1 hover:bg-white/20 rounded">
-            <X className="w-5 h-5 text-white" />
-          </button>
+    <div className="fixed inset-0 z-[220] flex items-center justify-center bg-slate-900/35 backdrop-blur-sm p-4">
+      <div className="flex w-full max-w-5xl max-h-[90vh] flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_30px_90px_rgba(15,23,42,0.2)]">
+        <div className="relative shrink-0 border-b border-slate-100 bg-gradient-to-r from-indigo-600 to-blue-500 px-6 py-5 text-white">
+          <div className="absolute -right-12 -top-8 h-32 w-32 rounded-full bg-white/10 blur-2xl" />
+          <div className="absolute left-0 bottom-0 h-px w-full bg-white/20" />
+          <div className="relative flex items-start justify-between gap-4">
+            <div>
+              <p className="text-[11px] uppercase tracking-[0.2em] text-white/80">AI Tools</p>
+              <h2 className="mt-1 text-2xl font-semibold">Daily Digest</h2>
+              <p className="mt-1 text-sm text-white/85">Minimal brief of what matters in your inbox right now.</p>
+            </div>
+            <button
+              onClick={onClose}
+              className="rounded-lg border border-white/35 p-2 text-white transition hover:bg-white/20"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
         </div>
 
-        {/* Body */}
-        <div className="p-6 overflow-y-auto bg-gray-50">
+        <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 p-6">
           {loading ? (
-            <div className="flex flex-col items-center justify-center py-12 text-gray-600">
-              <div className="h-12 w-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-              <p className="text-sm font-medium">Crafting your smart daily digest…</p>
+            <div className="rounded-2xl border border-slate-200 bg-white py-16 text-center">
+              <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-indigo-500 border-t-transparent" />
+              <p className="mt-4 text-sm font-medium text-slate-700">Crafting your digest...</p>
             </div>
           ) : (
-            <div className="space-y-6">
-              {digest?._meta && (
-                <div className="text-[11px] text-gray-500 bg-white border border-gray-200 rounded-lg px-3 py-2">
-                  AI Orchestrator: {digest._meta.strategy || "unknown"}
-                  {digest._meta.cached ? " • cache" : ""}
-                  {digest._meta.model ? ` • ${digest._meta.model}` : ""}
+            <div className="space-y-5">
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+                <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5">
+                  <p className="text-[11px] text-slate-500">Strategy</p>
+                  <p className="mt-1 text-[13px] font-semibold text-slate-900 flex items-center gap-1">
+                    <Sparkles className="h-3.5 w-3.5 text-indigo-500" />
+                    {strategy}
+                  </p>
                 </div>
-              )}
-
-              {/* IMPORTANT SECTION */}
-              {digest?.important && Array.isArray(digest.important) && (
-                <div className="bg-white p-5 rounded-xl shadow border border-gray-200">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-red-500">❗</span>
-                    <h3 className="text-md font-semibold text-gray-900">Important</h3>
-                  </div>
-                  <ul className="list-disc pl-5 space-y-1 text-sm text-red-700">
-                    {digest.important.map((i: string, idx: number) => (
-                      <li key={idx} className="font-medium">{i}</li>
-                    ))}
-                  </ul>
+                <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5">
+                  <p className="text-[11px] text-slate-500">Confidence</p>
+                  <p className="mt-1 text-[13px] font-semibold text-slate-900">{confidence}</p>
                 </div>
-              )}
-
-              {/* MEETINGS SECTION */}
-              {meetings.length > 0 && (
-                <div className="bg-white p-5 rounded-xl shadow border border-gray-200">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-blue-600">📅</span>
-                    <h3 className="text-md font-semibold text-gray-900">Meetings</h3>
-                  </div>
-                  <ul className="space-y-2 text-sm text-gray-700">
-                    {meetings.map((m: { subject?: string; date?: string }, idx: number) => (
-                      <li key={idx} className="flex flex-col">
-                        <span className="font-semibold text-gray-900">{m.subject}</span>
-                        {m.date && (
-                          <span className="text-xs text-blue-600 font-medium mt-1">📌 Date: {m.date}</span>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
+                <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5">
+                  <p className="text-[11px] text-slate-500">Signals</p>
+                  <p className="mt-1 text-[13px] font-semibold text-slate-900">{totalSignals}</p>
                 </div>
-              )}
-
-              {bills.length > 0 && (
-                <div className="bg-white p-5 rounded-xl shadow border border-gray-200">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-amber-600">💳</span>
-                    <h3 className="text-md font-semibold text-gray-900">Bills</h3>
-                  </div>
-                  <ul className="space-y-2 text-sm text-gray-700">
-                    {bills.slice(0, 8).map((b, idx) => (
-                      <li key={idx} className="flex flex-col">
-                        <span className="font-semibold text-gray-900">{b.subject || "Billing update"}</span>
-                        <span className="text-xs text-gray-500">
-                          {b.from || "Unknown sender"}
-                          {Array.isArray(b.amounts) && b.amounts.length > 0 ? ` • ${b.amounts[0]}` : ""}
-                          {Array.isArray(b.possibleDates) && b.possibleDates.length > 0 ? ` • ${b.possibleDates[0]}` : ""}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
+                <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5">
+                  <p className="text-[11px] text-slate-500">Model</p>
+                  <p className="mt-1 truncate text-[13px] font-semibold text-slate-900">{model}</p>
                 </div>
-              )}
-
-              {/* DATES SECTION */}
-              {digest?.dates && Array.isArray(digest.dates) && digest.dates.length > 0 && (
-                <div className="bg-white p-5 rounded-xl shadow border border-gray-200">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-green-600">🗓️</span>
-                    <h3 className="text-md font-semibold text-gray-900">Detected Dates</h3>
-                  </div>
-                  <ul className="list-disc pl-5 space-y-1 text-sm text-gray-700">
-                    {digest.dates.map((d: string, idx: number) => (
-                      <li key={idx}>{d}</li>
-                    ))}
-                  </ul>
+                <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5">
+                  <p className="text-[11px] text-slate-500">Cache</p>
+                  <p className="mt-1 text-[13px] font-semibold text-slate-900">
+                    {digest?._meta?.cached ? "hit" : "fresh"}
+                  </p>
                 </div>
-              )}
-
-              {/* TOP SENDERS SECTION */}
-              {digest?.topSenders && Array.isArray(digest.topSenders) && digest.topSenders.length > 0 && (
-                <div className="bg-white p-5 rounded-xl shadow border border-gray-200">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-purple-600">📨</span>
-                    <h3 className="text-md font-semibold text-gray-900">Top Senders</h3>
-                  </div>
-
-                  <table className="w-full text-sm text-left border-collapse">
-                    <thead>
-                      <tr className="border-b">
-                        <th className="py-2 font-semibold text-gray-700">Sender</th>
-                        <th className="py-2 font-semibold text-gray-700 w-20">Count</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {digest.topSenders.map((s: DigestSender, idx: number) => (
-                        <tr key={idx} className="border-b">
-                          <td className="py-2">{s.sender}</td>
-                          <td className="py-2 font-bold text-gray-900">{s.count}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-
-              {/* Summary Section */}
-              <div className="bg-white p-5 rounded-xl shadow border border-gray-200">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-blue-600">
-                    📄
-                  </span>
-                  <h3 className="text-md font-semibold text-gray-900">Summary</h3>
-                </div>
-                <p className="text-sm whitespace-pre-wrap leading-relaxed text-gray-800">
-                  {digest.summary || "No digest available."}
-                </p>
               </div>
 
-              {/* Highlights Section */}
-              {digest?.highlights && Array.isArray(digest.highlights) && (
-                <div className="bg-white p-5 rounded-xl shadow border border-gray-200">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-yellow-600">
-                      ⭐
-                    </span>
-                    <h3 className="text-md font-semibold text-gray-900">Highlights</h3>
-                  </div>
-                  <ul className="list-disc pl-5 space-y-1 text-sm text-gray-700">
-                    {digest.highlights.map((h: string, idx: number) => (
-                      <li key={idx}>{h}</li>
-                    ))}
-                  </ul>
+              <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                <div className="mb-2 flex items-center gap-2">
+                  <FileText className="h-4 w-4 text-blue-500" />
+                  <h3 className="text-[15px] font-semibold text-slate-900">Summary</h3>
                 </div>
-              )}
+                <p className="text-[14px] leading-relaxed text-slate-700 whitespace-pre-wrap">{summary}</p>
+              </div>
 
-              {/* Action Items */}
-              {digest?.actions && Array.isArray(digest.actions) && digest.actions.length > 0 && (
-                <div className="bg-white p-5 rounded-xl shadow border border-gray-200">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-red-600">
-                      ⚡
-                    </span>
-                    <h3 className="text-md font-semibold text-gray-900">Action Items</h3>
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <div className="mb-2 flex items-center gap-2">
+                    <Target className="h-4 w-4 text-rose-500" />
+                    <h3 className="text-[15px] font-semibold text-slate-900">Action Items</h3>
                   </div>
-                  <ul className="list-disc pl-5 space-y-2 text-sm text-gray-700">
-                    {digest.actions.map((a: DigestAction, idx: number) => (
-                      <li key={idx}>
-                        <span className="font-medium text-gray-900">{a.text}</span>
+                  {actions.length === 0 && <p className="text-sm text-slate-500">No action items detected.</p>}
+                  <div className="space-y-2">
+                    {actions.map((a: DigestAction, idx: number) => (
+                      <div key={idx} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                        <p className="text-sm font-medium text-slate-800">{a.text}</p>
                         {a.due && (
-                          <span className="ml-2 text-xs text-gray-500">(Due: {a.due})</span>
+                          <p className="mt-1 text-xs text-slate-500 flex items-center gap-1">
+                            <Clock3 className="h-3.5 w-3.5 text-slate-400" />
+                            {a.due}
+                          </p>
                         )}
-                      </li>
+                      </div>
                     ))}
-                  </ul>
+                  </div>
                 </div>
-              )}
 
+                <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <div className="mb-2 flex items-center gap-2">
+                    <TrendingUp className="h-4 w-4 text-amber-500" />
+                    <h3 className="text-[15px] font-semibold text-slate-900">Highlights</h3>
+                  </div>
+                  {highlights.length === 0 && <p className="text-sm text-slate-500">No highlights detected.</p>}
+                  <div className="space-y-2">
+                    {highlights.map((h: string, idx: number) => (
+                      <div key={idx} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                        {h}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <div className="mb-2 flex items-center gap-2">
+                    <Mail className="h-4 w-4 text-indigo-500" />
+                    <h3 className="text-[15px] font-semibold text-slate-900">Top Senders</h3>
+                  </div>
+                  {topSenders.length === 0 && <p className="text-sm text-slate-500">No sender data.</p>}
+                  <div className="space-y-2">
+                    {topSenders.map((s: DigestSender, idx: number) => (
+                      <div key={idx} className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                        <p className="truncate text-sm text-slate-700">{s.sender}</p>
+                        <span className="rounded-full bg-slate-200 px-2 py-0.5 text-xs font-semibold text-slate-700">
+                          {s.count}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <div className="mb-2 flex items-center gap-2">
+                    <CalendarDays className="h-4 w-4 text-cyan-600" />
+                    <h3 className="text-[15px] font-semibold text-slate-900">Meetings & Bills</h3>
+                  </div>
+                  <div className="space-y-2">
+                    {meetings.slice(0, 4).map((m, idx) => (
+                      <div key={`m-${idx}`} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                        <p className="text-sm font-medium text-slate-800">{m.subject || "Meeting detected"}</p>
+                        {m.date && <p className="mt-1 text-xs text-slate-500">{m.date}</p>}
+                      </div>
+                    ))}
+                    {bills.slice(0, 3).map((b, idx) => (
+                      <div key={`b-${idx}`} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                        <p className="text-sm font-medium text-slate-800">{b.subject || "Billing update"}</p>
+                        <p className="mt-1 text-xs text-slate-500 flex items-center gap-1">
+                          <UserRound className="h-3 w-3" />
+                          {b.from || "Unknown sender"}
+                          {Array.isArray(b.amounts) && b.amounts[0] ? ` • ${b.amounts[0]}` : ""}
+                        </p>
+                      </div>
+                    ))}
+                    {meetings.length === 0 && bills.length === 0 && (
+                      <p className="text-sm text-slate-500">No meetings or bills detected.</p>
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
           )}
         </div>
