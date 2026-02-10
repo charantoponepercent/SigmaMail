@@ -20,10 +20,21 @@ import ThreadPanel from "./components/ThreadPanel";
 import { formatDate, cleanSubject, getAvatarInitial } from "./components/utils/mailUtils";
 import { useThreadLoader } from "./hooks/useThreadLoader";
 import DigestModal from "./components/DigestModal";
+import OrchestratorStatusPanel from "./components/OrchestratorStatusPanel";
 import { DashboardMessage, DashboardThread } from "./types";
 
 type DashboardUser = { id: string; name: string };
 type DashboardAccount = { _id: string; email: string };
+type OrchestratorStatusItem = {
+  at: string;
+  task: string;
+  strategy: string;
+  confidence: number | null;
+  model: string | null;
+  latencyMs: number | null;
+  cached?: boolean;
+  error?: string | null;
+};
 export default function Dashboard() {
   const router = useRouter();
 
@@ -84,8 +95,10 @@ export default function Dashboard() {
   const [activeFilter, setActiveFilter] = useState("TODAY");
   const [activeCategory, setActiveCategory] = useState("All");
   const [digestOpen, setDigestOpen] = useState(false);
-  const [digestText, setDigestText] = useState("");
+  const [digestText, setDigestText] = useState<any>("");
   const [digestLoading, setDigestLoading] = useState(false);
+  const [orchestratorStatus, setOrchestratorStatus] = useState<OrchestratorStatusItem[]>([]);
+  const [orchestratorLoading, setOrchestratorLoading] = useState(false);
   const sseRef = useRef<EventSource | null>(null);
   const activeFilterRef = useRef(activeFilter);
 
@@ -185,6 +198,47 @@ export default function Dashboard() {
     }
   }, [activeFilter, applyCategoryLocally, loadMonthly, loadToday, loadWeek, loadYesterday]);
 
+  const loadOrchestratorStatus = useCallback(async () => {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+
+    setOrchestratorLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/ai/orchestrator-status?limit=8`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      const items = Array.isArray(data?.items) ? data.items : [];
+      const latestByTask: OrchestratorStatusItem[] = [];
+      const seen = new Set<string>();
+      for (const item of items) {
+        const task = typeof item?.task === "string" ? item.task : "unknown";
+        if (seen.has(task)) continue;
+        seen.add(task);
+        latestByTask.push(item);
+      }
+      setOrchestratorStatus(latestByTask);
+    } catch (err) {
+      console.error("Failed to load orchestrator status:", err);
+    } finally {
+      setOrchestratorLoading(false);
+    }
+  }, []);
+
+  const clearOrchestratorStatus = useCallback(async () => {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+    try {
+      await fetch(`${API_BASE}/api/ai/orchestrator-status`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setOrchestratorStatus([]);
+    } catch (err) {
+      console.error("Failed to clear orchestrator status:", err);
+    }
+  }, []);
+
 
   useEffect(() => {
     setMounted(true);
@@ -257,6 +311,7 @@ export default function Dashboard() {
       sseRef.current = es;
     }
     loadAccounts(token);
+    loadOrchestratorStatus();
   }, [router, loadAccounts]);
 
   // Helper: Is selectedAccount a special Today’s Decisions filter?
@@ -321,16 +376,14 @@ export default function Dashboard() {
       });
 
       const data = await res.json();
-      if (data.summary) {
-        setDigestText(data.summary);
-      } else {
-        setDigestText("No digest generated.");
-      }
+      if (data && typeof data === "object") setDigestText(data);
+      else setDigestText("No digest generated.");
     } catch (err) {
       console.error("Digest error:", err);
       setDigestText("Failed to generate daily digest.");
     } finally {
       setDigestLoading(false);
+      loadOrchestratorStatus();
     }
   }
 
@@ -389,6 +442,14 @@ export default function Dashboard() {
     };
   }, []);
 
+  useEffect(() => {
+    const interval = setInterval(() => {
+      loadOrchestratorStatus();
+    }, 30000);
+
+    return () => clearInterval(interval);
+  }, [loadOrchestratorStatus]);
+
   if (!mounted) return null;
 
   console.log("🖥️ Dashboard render, messages:", messages.length);
@@ -430,6 +491,13 @@ export default function Dashboard() {
             setActiveCategory={setActiveCategory}
             sourceMessages={sourceMessages}
             setMessages={setMessages}
+          />
+
+          <OrchestratorStatusPanel
+            items={orchestratorStatus}
+            loading={orchestratorLoading}
+            onRefresh={loadOrchestratorStatus}
+            onClear={clearOrchestratorStatus}
           />
 
           {showNewTag && (

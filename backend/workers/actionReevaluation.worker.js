@@ -3,9 +3,8 @@ import "../config/db.js";
 import Email from "../models/Email.js";
 import { evaluateActions } from "../actions/index.js";
 
-import { evaluateWithAI } from "../ai/aiDecisionEvaluator.js";
-import { callAI } from "../ai/aiClient.js";
-import { TODAYS_DECISION_PROMPT } from "../ai/prompts/todaysDecision.prompt.js";
+import { orchestrateActionDecision } from "../ai/orchestrator.js";
+import { recordOrchestratorStatus } from "../ai/orchestratorTelemetry.js";
 
 console.log("🚀 ActionReevaluation.worker loaded");
 
@@ -32,7 +31,7 @@ export async function runActionReevaluation() {
     ],
   })
     .select(
-      "_id subject text date isIncoming hasDeadline deadlineAt deadlineSource deadlineConfidence isFollowUp followUpWaitingSince"
+      "_id userId subject text from to date isIncoming hasDeadline deadlineAt deadlineSource deadlineConfidence isFollowUp followUpWaitingSince"
     )
     .lean();
 
@@ -49,52 +48,35 @@ export async function runActionReevaluation() {
     // 1️⃣ Heuristic evaluation (existing logic)
     const heuristicActionData = evaluateActions(email, threadMeta);
 
-    // 2️⃣ Decide if AI should run (borderline / actionable cases)
-    let aiResult = null;
-    const shouldRunAI =
-      heuristicActionData.needsReply ||
-      heuristicActionData.hasDeadline ||
-      heuristicActionData.isOverdueFollowUp ||
-      (heuristicActionData.needsReplyScore > 0.3 &&
-        heuristicActionData.needsReplyScore < 0.7);
+    // 2️⃣ Orchestrated AI decision (with gating + fallback)
+    const aiResult = await orchestrateActionDecision({
+      email: {
+        subject: email.subject,
+        text: email.text,
+        from: email.from,
+        to: email.to,
+        date: email.date,
+      },
+      heuristics: heuristicActionData,
+    });
 
-    if (shouldRunAI) {
-      try {
-        aiResult = await callAI({
-          systemPrompt: TODAYS_DECISION_PROMPT,
-          userPayload: {
-            email: {
-              subject: email.subject,
-              text: email.text,
-              from: email.from,
-              to: email.to,
-              date: email.date,
-            },
-            heuristics: heuristicActionData,
-          },
-        });
-      } catch (err) {
-        console.warn(
-          "⚠️ AI evaluation failed for email:",
-          email._id.toString(),
-          err.message
-        );
-      }
+    if (aiResult?._meta && email?.userId) {
+      await recordOrchestratorStatus({
+        userId: email.userId.toString(),
+        meta: aiResult._meta,
+        context: { emailId: email._id?.toString?.() || "" },
+      });
     }
 
     // 3️⃣ Merge heuristic + AI results
     const finalActionData = {
       ...heuristicActionData,
-      ...(aiResult
-        ? {
-            aiNeedsReply: aiResult.aiNeedsReply,
-            aiHasDeadline: aiResult.aiHasDeadline,
-            aiIsOverdueFollowUp: aiResult.aiIsOverdueFollowUp,
-            aiConfidence: aiResult.aiConfidence,
-            aiExplanation: aiResult.aiExplanation,
-            aiEvaluatedAt: new Date(),
-          }
-        : {}),
+      aiNeedsReply: aiResult.aiNeedsReply,
+      aiHasDeadline: aiResult.aiHasDeadline,
+      aiIsOverdueFollowUp: aiResult.aiIsOverdueFollowUp,
+      aiConfidence: aiResult.aiConfidence,
+      aiExplanation: aiResult.aiExplanation,
+      aiEvaluatedAt: new Date(),
     };
 
     // console.log("Final Action Data : ",finalActionData)

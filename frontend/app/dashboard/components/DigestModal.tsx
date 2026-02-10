@@ -2,15 +2,66 @@
 
 import { X } from "lucide-react";
 
+type DigestAction = {
+  text: string;
+  emailId?: string;
+  due?: string;
+};
+
+type DigestSender = {
+  sender: string;
+  count: number;
+};
+
+type DigestMeta = {
+  task?: string;
+  strategy?: string;
+  model?: string | null;
+  confidence?: number | null;
+  cached?: boolean;
+};
+
+type DigestData = {
+  summary?: string;
+  important?: string[];
+  meetings?: Array<{ subject?: string; date?: string }>;
+  dates?: string[];
+  topSenders?: DigestSender[];
+  highlights?: string[];
+  actions?: DigestAction[];
+  sections?: {
+    bills?: Array<{ subject?: string; from?: string; possibleDates?: string[]; amounts?: string[] }>;
+    meetings?: Array<{ subject?: string; from?: string; possibleDates?: string[] }>;
+    travel?: Array<{ subject?: string; from?: string }>;
+    attachments?: Array<{ subject?: string; from?: string }>;
+    priorityUnread?: Array<{ subject?: string; from?: string }>;
+  };
+  _meta?: DigestMeta;
+};
+
 type Props = {
   open: boolean;
   onClose: () => void;
-  digestText: string;
+  digestText: string | DigestData;
   loading: boolean;
 };
 
 export default function DigestModal({ open, onClose, digestText, loading }: Props) {
   if (!open) return null;
+
+  const digest: DigestData =
+    typeof digestText === "string"
+      ? { summary: digestText }
+      : digestText || {};
+  const meetings = Array.isArray(digest.meetings)
+    ? digest.meetings
+    : Array.isArray(digest.sections?.meetings)
+      ? digest.sections.meetings.map((m) => ({
+          subject: m.subject,
+          date: m.possibleDates?.[0],
+        }))
+      : [];
+  const bills = Array.isArray(digest.sections?.bills) ? digest.sections.bills : [];
 
   return (
     <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[200]">
@@ -33,16 +84,23 @@ export default function DigestModal({ open, onClose, digestText, loading }: Prop
             </div>
           ) : (
             <div className="space-y-6">
+              {digest?._meta && (
+                <div className="text-[11px] text-gray-500 bg-white border border-gray-200 rounded-lg px-3 py-2">
+                  AI Orchestrator: {digest._meta.strategy || "unknown"}
+                  {digest._meta.cached ? " • cache" : ""}
+                  {digest._meta.model ? ` • ${digest._meta.model}` : ""}
+                </div>
+              )}
 
               {/* IMPORTANT SECTION */}
-              {digestText?.important && Array.isArray(digestText.important) && (
+              {digest?.important && Array.isArray(digest.important) && (
                 <div className="bg-white p-5 rounded-xl shadow border border-gray-200">
                   <div className="flex items-center gap-2 mb-2">
                     <span className="text-red-500">❗</span>
                     <h3 className="text-md font-semibold text-gray-900">Important</h3>
                   </div>
                   <ul className="list-disc pl-5 space-y-1 text-sm text-red-700">
-                    {digestText.important.map((i: string, idx: number) => (
+                    {digest.important.map((i: string, idx: number) => (
                       <li key={idx} className="font-medium">{i}</li>
                     ))}
                   </ul>
@@ -50,14 +108,14 @@ export default function DigestModal({ open, onClose, digestText, loading }: Prop
               )}
 
               {/* MEETINGS SECTION */}
-              {digestText?.meetings && Array.isArray(digestText.meetings) && digestText.meetings.length > 0 && (
+              {meetings.length > 0 && (
                 <div className="bg-white p-5 rounded-xl shadow border border-gray-200">
                   <div className="flex items-center gap-2 mb-2">
                     <span className="text-blue-600">📅</span>
                     <h3 className="text-md font-semibold text-gray-900">Meetings</h3>
                   </div>
                   <ul className="space-y-2 text-sm text-gray-700">
-                    {digestText.meetings.map((m: any, idx: number) => (
+                    {meetings.map((m: { subject?: string; date?: string }, idx: number) => (
                       <li key={idx} className="flex flex-col">
                         <span className="font-semibold text-gray-900">{m.subject}</span>
                         {m.date && (
@@ -69,15 +127,36 @@ export default function DigestModal({ open, onClose, digestText, loading }: Prop
                 </div>
               )}
 
+              {bills.length > 0 && (
+                <div className="bg-white p-5 rounded-xl shadow border border-gray-200">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-amber-600">💳</span>
+                    <h3 className="text-md font-semibold text-gray-900">Bills</h3>
+                  </div>
+                  <ul className="space-y-2 text-sm text-gray-700">
+                    {bills.slice(0, 8).map((b, idx) => (
+                      <li key={idx} className="flex flex-col">
+                        <span className="font-semibold text-gray-900">{b.subject || "Billing update"}</span>
+                        <span className="text-xs text-gray-500">
+                          {b.from || "Unknown sender"}
+                          {Array.isArray(b.amounts) && b.amounts.length > 0 ? ` • ${b.amounts[0]}` : ""}
+                          {Array.isArray(b.possibleDates) && b.possibleDates.length > 0 ? ` • ${b.possibleDates[0]}` : ""}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
               {/* DATES SECTION */}
-              {digestText?.dates && Array.isArray(digestText.dates) && digestText.dates.length > 0 && (
+              {digest?.dates && Array.isArray(digest.dates) && digest.dates.length > 0 && (
                 <div className="bg-white p-5 rounded-xl shadow border border-gray-200">
                   <div className="flex items-center gap-2 mb-2">
                     <span className="text-green-600">🗓️</span>
                     <h3 className="text-md font-semibold text-gray-900">Detected Dates</h3>
                   </div>
                   <ul className="list-disc pl-5 space-y-1 text-sm text-gray-700">
-                    {digestText.dates.map((d: string, idx: number) => (
+                    {digest.dates.map((d: string, idx: number) => (
                       <li key={idx}>{d}</li>
                     ))}
                   </ul>
@@ -85,7 +164,7 @@ export default function DigestModal({ open, onClose, digestText, loading }: Prop
               )}
 
               {/* TOP SENDERS SECTION */}
-              {digestText?.topSenders && Array.isArray(digestText.topSenders) && digestText.topSenders.length > 0 && (
+              {digest?.topSenders && Array.isArray(digest.topSenders) && digest.topSenders.length > 0 && (
                 <div className="bg-white p-5 rounded-xl shadow border border-gray-200">
                   <div className="flex items-center gap-2 mb-2">
                     <span className="text-purple-600">📨</span>
@@ -100,7 +179,7 @@ export default function DigestModal({ open, onClose, digestText, loading }: Prop
                       </tr>
                     </thead>
                     <tbody>
-                      {digestText.topSenders.map((s: any, idx: number) => (
+                      {digest.topSenders.map((s: DigestSender, idx: number) => (
                         <tr key={idx} className="border-b">
                           <td className="py-2">{s.sender}</td>
                           <td className="py-2 font-bold text-gray-900">{s.count}</td>
@@ -120,12 +199,12 @@ export default function DigestModal({ open, onClose, digestText, loading }: Prop
                   <h3 className="text-md font-semibold text-gray-900">Summary</h3>
                 </div>
                 <p className="text-sm whitespace-pre-wrap leading-relaxed text-gray-800">
-                  {typeof digestText === "string" ? digestText : digestText?.summary}
+                  {digest.summary || "No digest available."}
                 </p>
               </div>
 
               {/* Highlights Section */}
-              {digestText?.highlights && Array.isArray(digestText.highlights) && (
+              {digest?.highlights && Array.isArray(digest.highlights) && (
                 <div className="bg-white p-5 rounded-xl shadow border border-gray-200">
                   <div className="flex items-center gap-2 mb-2">
                     <span className="text-yellow-600">
@@ -134,7 +213,7 @@ export default function DigestModal({ open, onClose, digestText, loading }: Prop
                     <h3 className="text-md font-semibold text-gray-900">Highlights</h3>
                   </div>
                   <ul className="list-disc pl-5 space-y-1 text-sm text-gray-700">
-                    {digestText.highlights.map((h: string, idx: number) => (
+                    {digest.highlights.map((h: string, idx: number) => (
                       <li key={idx}>{h}</li>
                     ))}
                   </ul>
@@ -142,7 +221,7 @@ export default function DigestModal({ open, onClose, digestText, loading }: Prop
               )}
 
               {/* Action Items */}
-              {digestText?.actions && Array.isArray(digestText.actions) && digestText.actions.length > 0 && (
+              {digest?.actions && Array.isArray(digest.actions) && digest.actions.length > 0 && (
                 <div className="bg-white p-5 rounded-xl shadow border border-gray-200">
                   <div className="flex items-center gap-2 mb-2">
                     <span className="text-red-600">
@@ -151,7 +230,7 @@ export default function DigestModal({ open, onClose, digestText, loading }: Prop
                     <h3 className="text-md font-semibold text-gray-900">Action Items</h3>
                   </div>
                   <ul className="list-disc pl-5 space-y-2 text-sm text-gray-700">
-                    {digestText.actions.map((a: any, idx: number) => (
+                    {digest.actions.map((a: DigestAction, idx: number) => (
                       <li key={idx}>
                         <span className="font-medium text-gray-900">{a.text}</span>
                         {a.due && (

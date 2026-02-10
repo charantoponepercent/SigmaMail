@@ -9,13 +9,33 @@
 
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const DEFAULT_MODEL = process.env.GEMINI_MODEL || "gemini-3-flash-preview";
+const DEFAULT_TIMEOUT_MS = Number(process.env.GEMINI_TIMEOUT_MS || 12000);
+const FALLBACK_MODELS = (process.env.GEMINI_FALLBACK_MODELS || "gemini-3-flash-preview")
+  .split(",")
+  .map((m) => m.trim())
+  .filter(Boolean);
+const MAX_RETRIES = Math.max(0, Number(process.env.GEMINI_MAX_RETRIES || 1));
 
 function normalizeGeminiError(err) {
   if (!err) return "Unknown AI error";
 
-  if (err.name === "AbortError") {
+  if (err.name === "AbortError" || err?.message?.includes("aborted")) {
     return "Gemini request timed out";
+  }
+
+  const msg = typeof err.message === "string" ? err.message : "";
+  if (msg.includes("API_KEY_INVALID") || msg.includes("API key not valid")) {
+    return "Gemini API key is invalid";
+  }
+  if (msg.includes("PERMISSION_DENIED")) {
+    return "Gemini access denied for this model";
+  }
+  if (msg.includes("NOT_FOUND") || msg.includes("404")) {
+    return "Gemini model not found";
+  }
+  if (msg.includes("Error fetching from https://generativelanguage.googleapis.com")) {
+    return "Gemini network request failed";
   }
 
   if (typeof err.message === "string") {
@@ -25,6 +45,79 @@ function normalizeGeminiError(err) {
   return "Gemini failed with unknown error";
 }
 
+function isFatalGeminiError(message = "") {
+  const text = (message || "").toLowerCase();
+  return (
+    text.includes("api key is invalid") ||
+    text.includes("api_key_invalid") ||
+    text.includes("access denied")
+  );
+}
+
+function isRetryableGeminiError(message = "") {
+  const text = (message || "").toLowerCase();
+  return (
+    text.includes("timed out") ||
+    text.includes("network") ||
+    text.includes("fetch") ||
+    text.includes("503") ||
+    text.includes("429")
+  );
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function buildCandidateModels(model) {
+  const out = [];
+  const seen = new Set();
+  [model, DEFAULT_MODEL, ...FALLBACK_MODELS].forEach((m) => {
+    if (!m || seen.has(m)) return;
+    seen.add(m);
+    out.push(m);
+  });
+  return out;
+}
+
+function extractJson(raw = "") {
+  const text = String(raw || "").trim();
+  if (!text) {
+    throw new Error("Empty Gemini response");
+  }
+
+  // Handle fenced output if the model ignores JSON-only instruction.
+  const unfenced = text
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/, "")
+    .trim();
+
+  try {
+    return JSON.parse(unfenced);
+  } catch {
+    // Continue with brace extraction fallback below.
+  }
+
+  const objectStart = unfenced.indexOf("{");
+  const arrayStart = unfenced.indexOf("[");
+  const start =
+    objectStart === -1
+      ? arrayStart
+      : arrayStart === -1
+        ? objectStart
+        : Math.min(objectStart, arrayStart);
+  const objectEnd = unfenced.lastIndexOf("}");
+  const arrayEnd = unfenced.lastIndexOf("]");
+  const end = Math.max(objectEnd, arrayEnd);
+
+  if (start !== -1 && end !== -1 && end > start) {
+    const slice = unfenced.slice(start, end + 1);
+    return JSON.parse(slice);
+  }
+
+  throw new Error("Gemini returned non-JSON output");
+}
+
 /**
  * Call Gemini with a system prompt and user payload.
  * Must return parsed JSON.
@@ -32,25 +125,18 @@ function normalizeGeminiError(err) {
 export async function callAI({
   systemPrompt,
   userPayload,
-  model = "gemini-3-flash-preview",
-  timeoutMs = 8000,
+  model = DEFAULT_MODEL,
+  timeoutMs = DEFAULT_TIMEOUT_MS,
 }) {
   if (!systemPrompt || !userPayload) {
     throw new Error("callAI requires systemPrompt and userPayload");
   }
+  const apiKey = (process.env.GEMINI_API_KEY || "").trim();
+  if (!apiKey) {
+    throw new Error("Gemini API key missing");
+  }
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    const generativeModel = genAI.getGenerativeModel({
-      model,
-      generationConfig: {
-        temperature: 0,
-      },
-    });
-
-    const prompt = `
+  const prompt = `
 SYSTEM:
 ${systemPrompt}
 
@@ -63,33 +149,49 @@ IMPORTANT:
 - Do NOT include explanations outside JSON
 `;
 
-    const result = await generativeModel.generateContent(prompt, {
-      signal: controller.signal,
-    });
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const models = buildCandidateModels(model);
+  let lastError = "unknown_error";
 
-    const raw = result?.response?.text?.();
+  for (const modelName of models) {
+    let attempt = 0;
+    const maxAttemptsForModel = 1 + MAX_RETRIES;
 
-    if (!raw) {
-      throw new Error("Empty Gemini response");
-    }
+    while (attempt < maxAttemptsForModel) {
+      attempt += 1;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
-    // Defensive JSON parsing
-    try {
-      const firstBrace = raw.indexOf("{");
-      const lastBrace = raw.lastIndexOf("}");
+      try {
+        const generativeModel = genAI.getGenerativeModel({
+          model: modelName,
+          generationConfig: { temperature: 0 },
+        });
 
-      if (firstBrace === -1 || lastBrace === -1) {
-        return null; // ❗ Non‑JSON → treat as AI unavailable
+        const result = await generativeModel.generateContent(prompt, {
+          signal: controller.signal,
+        });
+
+        const raw = result?.response?.text?.();
+        const parsed = extractJson(raw);
+        return parsed;
+      } catch (err) {
+        const normalized = normalizeGeminiError(err);
+        lastError = normalized;
+        const fatal = isFatalGeminiError(normalized);
+        const retryable = isRetryableGeminiError(normalized);
+        if (fatal) break;
+        if (attempt >= maxAttemptsForModel || !retryable) break;
+        await sleep(200 * attempt);
+      } finally {
+        clearTimeout(timeout);
       }
-
-      const jsonString = raw.slice(firstBrace, lastBrace + 1);
-      return JSON.parse(jsonString);
-    } catch {
-      return null; // ❗ Invalid JSON → treat as AI unavailable
     }
-  } catch (err) {
-    throw new Error(normalizeGeminiError(err));
-  } finally {
-    clearTimeout(timeout);
+
+    if (isFatalGeminiError(lastError)) {
+      break;
+    }
   }
+
+  throw new Error(lastError);
 }

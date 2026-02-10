@@ -2,6 +2,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { Mic, Send } from "lucide-react";
+import { API_BASE } from "@/lib/api";
 
 type Msg = { sender: "user" | "ai" | "system"; text: string };
 
@@ -65,7 +66,7 @@ export default function MinimalChat({
     setMessages((prev) => [...prev, { sender: "user", text }]);
     setInput("");
     // NEW — Call classifier to detect summarization intent
-    const classifyRes = await fetch("http://localhost:4000/api/ai/classify", {
+    const classifyRes = await fetch(`${API_BASE}/api/ai/classify`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -73,6 +74,11 @@ export default function MinimalChat({
       },
       body: JSON.stringify({ message: text }),
     });
+
+    if (!classifyRes.ok) {
+      setMessages((prev) => [...prev, { sender: "ai", text: "SigmaAI could not classify your request right now." }]);
+      return;
+    }
 
     const classify = await classifyRes.json();
     const wantsSummary = classify?.summarize === true;
@@ -87,7 +93,7 @@ export default function MinimalChat({
       setMessages((prev) => [...prev, { sender: "system", text: "SigmaAI is analyzing the email…" }]);
 
       try {
-        const res = await fetch("http://localhost:4000/api/ai/summarize-thread", {
+        const res = await fetch(`${API_BASE}/api/ai/summarize-thread`, {
           method: "POST",
           headers: { 
             "Content-Type": "application/json",
@@ -95,6 +101,10 @@ export default function MinimalChat({
           },
           body: JSON.stringify({ threadId: currentThreadId }),
         });
+
+        if (!res.ok) {
+          throw new Error("summary_request_failed");
+        }
 
         const data = await res.json();
 
@@ -115,6 +125,16 @@ export default function MinimalChat({
             ...prev,
             { sender: "ai", text: html },
           ]);
+
+          if (data?._meta?.strategy) {
+            setMessages((prev) => [
+              ...prev,
+              {
+                sender: "system",
+                text: `AI route: ${data._meta.strategy}${data?._meta?.cached ? " (cached)" : ""}`,
+              },
+            ]);
+          }
         } else {
           setMessages((prev) => [...prev, { sender: "ai", text: "No summary available." }]);
         }
