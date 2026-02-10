@@ -24,9 +24,6 @@ function normalizeEmbeddingEndpoint(value = "") {
 const PREFERRED_EMBEDDING_URLS = [
   normalizeEmbeddingEndpoint(process.env.EMBEDDING_URL),
   normalizeEmbeddingEndpoint(process.env.CLASSIFIER_EMBED_URL),
-  "http://localhost:8000/embed",
-  "http://127.0.0.1:8000/embed",
-  "http://embedding-service:8000/embed",
 ].filter(Boolean);
 
 export async function generateEmbedding(text) {
