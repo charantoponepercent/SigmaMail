@@ -376,7 +376,15 @@ export default function Dashboard() {
 
   function connectNewGmail() {
     const u = JSON.parse(localStorage.getItem("user") || "{}");
-    const url = `${API_BASE}/auth/google?userId=${u.id}`;
+    const params = new URLSearchParams();
+    if (u?.id) params.set("userId", u.id);
+    if (u?.email) params.set("userEmail", u.email);
+    const qs = params.toString();
+    if (!qs) {
+      alert("Missing user session. Please log in again.");
+      return;
+    }
+    const url = `${API_BASE}/auth/google?${qs}`;
     window.open(url, "_blank", "width=800,height=700");
   }
 

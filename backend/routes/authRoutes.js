@@ -2,6 +2,8 @@
 import express from "express";
 import dotenv from "dotenv";
 import { google } from "googleapis";
+import { randomBytes } from "node:crypto";
+import mongoose from "mongoose";
 import User from "../models/User.js";
 import EmailAccount from "../models/EmailAccount.js";
 import { enqueueInitialSync } from "../queues/gmailInitialSync.queue.js";
@@ -84,16 +86,22 @@ router.get("/google/callback", async (req, res) => {
 
     // ✅ Find or create app-level user
     let appUser;
-    if (userIdFromState) {
+    if (userIdFromState && mongoose.Types.ObjectId.isValid(userIdFromState)) {
       appUser = await User.findById(userIdFromState);
-    } else if (userEmailFromState) {
+    }
+    if (!appUser && userEmailFromState) {
       appUser = await User.findOne({ email: userEmailFromState });
+    }
+    if (!appUser && gmailAddress) {
+      appUser = await User.findOne({ email: gmailAddress });
     }
 
     if (!appUser) {
       appUser = await User.create({
         email: userEmailFromState || gmailAddress,
         name: gmailAddress.split("@")[0],
+        // User schema requires password; generate one for OAuth-created users.
+        password: randomBytes(24).toString("hex"),
       });
     }
 
@@ -271,8 +279,12 @@ router.get("/google/callback", async (req, res) => {
     `);
     
   } catch (err) {
-    console.error("❌ Error in OAuth callback:", err);
-    res.status(500).send("OAuth callback failed");
+    console.error("❌ Error in OAuth callback:", {
+      message: err?.message,
+      code: err?.code,
+      stack: err?.stack,
+    });
+    res.status(500).send(`OAuth callback failed: ${err?.message || "Unknown error"}`);
   }
 });
 

@@ -1,8 +1,29 @@
 import fetch from "node-fetch";
 
+function normalizeEmbeddingEndpoint(value = "") {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+
+  // Render `hostport` looks like `service-name:port`; add scheme in that case.
+  const withScheme = raw.includes("://") ? raw : `http://${raw}`;
+  let url;
+  try {
+    url = new URL(withScheme);
+  } catch {
+    return null;
+  }
+
+  // If caller provided only host/base URL, default to the embedding endpoint.
+  if (!url.pathname || url.pathname === "/") {
+    url.pathname = "/embed";
+  }
+
+  return url.toString();
+}
+
 const PREFERRED_EMBEDDING_URLS = [
-  process.env.EMBEDDING_URL,
-  process.env.CLASSIFIER_EMBED_URL,
+  normalizeEmbeddingEndpoint(process.env.EMBEDDING_URL),
+  normalizeEmbeddingEndpoint(process.env.CLASSIFIER_EMBED_URL),
   "http://localhost:8000/embed",
   "http://127.0.0.1:8000/embed",
   "http://embedding-service:8000/embed",

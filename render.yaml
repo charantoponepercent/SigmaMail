@@ -1,5 +1,16 @@
 services:
   - type: web
+    name: sigmamail-embedding
+    runtime: docker
+    dockerContext: ./backend/embedding-service
+    dockerfilePath: ./backend/embedding-service/Dockerfile
+    autoDeploy: true
+    healthCheckPath: /health
+    envVars:
+      - key: EMBED_MODEL
+        sync: false
+
+  - type: web
     name: sigmamail-backend
     runtime: docker
     dockerContext: ./backend
@@ -41,9 +52,15 @@ services:
       - key: CLOUDINARY_API_SECRET
         sync: false
       - key: EMBEDDING_URL
-        sync: false
+        fromService:
+          type: web
+          name: sigmamail-embedding
+          property: hostport
       - key: CLASSIFIER_EMBED_URL
-        sync: false
+        fromService:
+          type: web
+          name: sigmamail-embedding
+          property: hostport
 
   - type: worker
     name: sigmamail-worker-gmail-push
@@ -74,9 +91,15 @@ services:
       - key: CLOUDINARY_API_SECRET
         sync: false
       - key: EMBEDDING_URL
-        sync: false
+        fromService:
+          type: web
+          name: sigmamail-embedding
+          property: hostport
       - key: CLASSIFIER_EMBED_URL
-        sync: false
+        fromService:
+          type: web
+          name: sigmamail-embedding
+          property: hostport
 
   - type: worker
     name: sigmamail-worker-gmail-message-sync
@@ -107,9 +130,15 @@ services:
       - key: CLOUDINARY_API_SECRET
         sync: false
       - key: EMBEDDING_URL
-        sync: false
+        fromService:
+          type: web
+          name: sigmamail-embedding
+          property: hostport
       - key: CLASSIFIER_EMBED_URL
-        sync: false
+        fromService:
+          type: web
+          name: sigmamail-embedding
+          property: hostport
 
   - type: worker
     name: sigmamail-worker-gmail-initial-sync
@@ -140,6 +169,12 @@ services:
       - key: CLOUDINARY_API_SECRET
         sync: false
       - key: EMBEDDING_URL
-        sync: false
+        fromService:
+          type: web
+          name: sigmamail-embedding
+          property: hostport
       - key: CLASSIFIER_EMBED_URL
-        sync: false
+        fromService:
+          type: web
+          name: sigmamail-embedding
+          property: hostport

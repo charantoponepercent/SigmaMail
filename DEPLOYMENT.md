@@ -11,6 +11,7 @@ This project is a monorepo:
 3. Google OAuth credentials for Gmail integration.
 4. Google Pub/Sub topic for Gmail push (`GOOGLE_PUBSUB_TOPIC`).
 5. Gemini API key for AI features.
+6. (Optional but recommended for full features) Embedding model name (`EMBED_MODEL`), e.g. `sentence-transformers/all-MiniLM-L6-v2`.
 
 ## 2) Deploy Backend on Render
 
@@ -18,10 +19,12 @@ This project is a monorepo:
 2. In Render, deploy from `render.yaml` as a **Blueprint**.
    - This blueprint is configured with **Docker runtime** for API + workers.
 3. This creates:
+   - `sigmamail-embedding` (embedding API)
    - `sigmamail-backend` (web API)
    - `sigmamail-worker-gmail-push` (Pub/Sub job consumer)
    - `sigmamail-worker-gmail-message-sync` (message sync worker)
    - `sigmamail-worker-gmail-initial-sync` (initial sync worker)
+   - `EMBEDDING_URL` and `CLASSIFIER_EMBED_URL` are auto-wired from the embedding service host/port in `render.yaml`.
 4. Set environment variables (from `backend/.env.example`) on all backend services:
    - `NODE_ENV=production`
    - `MONGO_URI`
@@ -33,7 +36,9 @@ This project is a monorepo:
    - `GOOGLE_PUBSUB_TOPIC` (format: `projects/<project-id>/topics/<topic-name>`)
    - `GEMINI_API_KEY`
    - `CORS_ORIGINS`
+   - `EMBED_MODEL` (only on `sigmamail-embedding`, optional; default model is used if omitted)
 5. Deploy and verify:
+   - `GET https://<render-embedding-domain>/health` returns `200`.
    - `GET https://<render-backend-domain>/health` returns `200`.
    - `GET https://<render-backend-domain>/ready` returns `200` when Mongo + Redis are ready.
    - Worker service logs show active BullMQ workers without crash loops.
