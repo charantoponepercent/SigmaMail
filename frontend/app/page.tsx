@@ -76,6 +76,8 @@ export default function HomePage() {
             </span>
 
             <h1 className={`${displayFont.className} mt-6 text-4xl font-bold leading-[1.04] text-slate-900 sm:text-5xl lg:text-6xl`}>
+              SigmaMail.
+              <br />
               Stop managing email.
               <br />
               Start commanding it.
@@ -105,6 +107,14 @@ export default function HomePage() {
                 className="inline-flex items-center gap-2 rounded-xl border border-transparent px-5 py-3 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-white/80"
               >
                 Open Demo Dashboard
+              </Link>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-4 text-sm text-slate-600">
+              <Link href="/privacy" className="underline underline-offset-4 hover:text-slate-900">
+                Privacy Policy
+              </Link>
+              <Link href="/terms" className="underline underline-offset-4 hover:text-slate-900">
+                Terms of Service
               </Link>
             </div>
 
@@ -265,6 +275,13 @@ export default function HomePage() {
             </div>
           </div>
         </section>
+        <footer className="mx-auto flex max-w-6xl items-center justify-between border-t border-slate-200 px-6 pb-8 pt-6 text-sm text-slate-500">
+          <p>SigmaMail helps users triage Gmail and respond faster with action-first inbox intelligence.</p>
+          <div className="flex items-center gap-4">
+            <Link href="/privacy" className="hover:text-slate-900 underline underline-offset-4">Privacy</Link>
+            <Link href="/terms" className="hover:text-slate-900 underline underline-offset-4">Terms</Link>
+          </div>
+        </footer>
       </main>
     </>
   );
