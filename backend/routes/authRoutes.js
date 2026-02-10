@@ -129,7 +129,7 @@ router.get("/google/callback", async (req, res) => {
     // 🔔 Register Gmail Push Notification (Pub/Sub)
     try {
       await startGmailWatch(account);
-      console.log("📡 Gmail watch registered for", account.email);
+      // console.log("📡 Gmail watch registered for", account.email);
     } catch (err) {
       console.error("❌ Failed to register Gmail watch:", err.message);
     }
@@ -139,7 +139,7 @@ router.get("/google/callback", async (req, res) => {
       await enqueueInitialSync(account._id);
     }
 
-    console.log(`✅ Gmail connected: ${gmailAddress} → User: ${appUser.email}`);
+    // console.log(`✅ Gmail connected: ${gmailAddress} → User: ${appUser.email}`);
 
     res.send(`
       <!DOCTYPE html>

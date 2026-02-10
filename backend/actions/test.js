@@ -55,8 +55,8 @@ const followUpThread = {
 };
 
 function runScenario(label, email, thread) {
-  console.log(`\n=== ${label} ===`);
-  console.log(evaluateActions(email, thread));
+  // console.log(`\n=== ${label} ===`);
+  // console.log(evaluateActions(email, thread));
 }
 
 runScenario("Deadline detection", inboundDeadlineEmail, deadlineThread);

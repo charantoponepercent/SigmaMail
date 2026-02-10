@@ -165,7 +165,7 @@ async function syncAccount(account) {
 }
 
 export async function syncSingleMessage(gmail, messageId, account) {
-  console.log("📩 syncSingleMessage START:", messageId);
+  // console.log("📩 syncSingleMessage START:", messageId);
   
   // Use upsert to avoid duplicates in race conditions
   const emailFilter = { messageId, accountId: account._id };
@@ -258,7 +258,6 @@ export async function syncSingleMessage(gmail, messageId, account) {
         options.filename_override = a.filename.replace(/\.[^.]+$/, "") + ".jpg";
       }
 
-      console.log(`⬆️ Uploading ${a.mimeType} to Cloudinary...`, a.filename);
       const uploadRes = await cloudinary.uploader.upload(dataUrl, options);
 
       uploadedAttachments.push({
@@ -427,7 +426,6 @@ export async function syncSingleMessage(gmail, messageId, account) {
     },
     { upsert: true, new: true }
   );
-  console.log("💾 Email saved:", emailDoc._id.toString());
 
   // 🔔 Emit SSE
   if (!existed) {
@@ -487,9 +485,7 @@ export async function syncSingleMessage(gmail, messageId, account) {
     lastMessageAt: emailDoc.date,
   };
 
-  console.log("🧠 Evaluating actions for:", emailDoc._id.toString());
   const actionData = evaluateActions(emailForEvaluator, threadMeta);
-  console.log("ACTION DATA:", actionData);
 
   // Update DB with results
   await Email.updateOne(

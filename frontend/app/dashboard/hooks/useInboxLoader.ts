@@ -67,7 +67,6 @@ export function useInboxLoader({
         const grouped = processEmails(emails);
 
         if (force) {
-          console.log("🔥 FORCE inbox replace:", grouped.length);
           setSourceMessages(grouped);
           setMessages(
             activeCategory === "All"

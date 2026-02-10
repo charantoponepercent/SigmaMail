@@ -11,7 +11,6 @@ import { getAuthorizedClientForAccount } from "../utils/googleClient.js";
 // 🔥 IMPORTANT: import your EXISTING function
 import { syncSingleMessage } from "./gmailSyncWorker.js";
 
-console.log("🚀 Gmail Message Sync Worker started");
 
 new Worker(
   "gmail-message-sync",

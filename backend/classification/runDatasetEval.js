@@ -49,21 +49,21 @@ const totals = Object.values(perCategory).reduce(
 
 const accuracy = totals.total === 0 ? 0 : (totals.correct / totals.total) * 100;
 
-console.log("=== Classification Dataset Evaluation ===");
-console.log(`Samples: ${totals.total}`);
-console.log(`Accuracy: ${accuracy.toFixed(2)}% (disableSemantic=${disableSemantic})\n`);
+// console.log("=== Classification Dataset Evaluation ===");
+// console.log(`Samples: ${totals.total}`);
+// console.log(`Accuracy: ${accuracy.toFixed(2)}% (disableSemantic=${disableSemantic})\n`);
 
-console.log("Per-category accuracy:");
+// console.log("Per-category accuracy:");
 for (const [category, stats] of Object.entries(perCategory)) {
   const pct = stats.total === 0 ? 0 : (stats.correct / stats.total) * 100;
-  console.log(` - ${category}: ${stats.correct}/${stats.total} (${pct.toFixed(1)}%)`);
+  // console.log(` - ${category}: ${stats.correct}/${stats.total} (${pct.toFixed(1)}%)`);
 }
 
 if (misclassifications.length) {
-  console.log("\nMisclassifications:");
+  // console.log("\nMisclassifications:");
   for (const miss of misclassifications) {
-    console.log(` • ${miss.label}: expected ${miss.expected}, predicted ${miss.predicted} (score ${miss.topScore})`);
-    console.log(`   Top candidates: ${miss.candidates.map(c => `${c.name}:${c.score}`).join(", ")}`);
+    // console.log(` • ${miss.label}: expected ${miss.expected}, predicted ${miss.predicted} (score ${miss.topScore})`);
+    // console.log(`   Top candidates: ${miss.candidates.map(c => `${c.name}:${c.score}`).join(", ")}`);
   }
 } else {
   console.log("\nNo misclassifications detected.");

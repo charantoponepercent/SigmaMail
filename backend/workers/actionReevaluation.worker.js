@@ -4,7 +4,6 @@ import Email from "../models/Email.js";
 import EmailAccount from "../models/EmailAccount.js";
 import { evaluateActions } from "../actions/index.js";
 
-console.log("🚀 ActionReevaluation.worker loaded");
 
 const ACTION_LOOKBACK_DAYS = Number(process.env.ACTION_REEVAL_LOOKBACK_DAYS || 21);
 const STALE_HOURS = Number(process.env.ACTION_REEVAL_STALE_HOURS || 6);
@@ -67,7 +66,6 @@ function inferIncomingFromSender(sender = "", accountEmails = new Set()) {
  * No Gmail calls. No AI calls.
  */
 export async function runActionReevaluation() {
-  console.log("🔁 Action re-evaluation started");
   const now = new Date();
   const lookbackStart = new Date(now);
   lookbackStart.setDate(lookbackStart.getDate() - ACTION_LOOKBACK_DAYS);
@@ -89,8 +87,6 @@ export async function runActionReevaluation() {
     )
     .sort({ date: -1 })
     .lean();
-
-  console.log("📊 Action re-evaluation candidates:", candidates.length);
 
   const threadCache = new Map();
   const updates = [];
@@ -156,7 +152,6 @@ export async function runActionReevaluation() {
     await Email.bulkWrite(updates, { ordered: false });
   }
 
-  console.log("✅ Action re-evaluation finished");
   return {
     processed: updates.length,
     ranAt: now,

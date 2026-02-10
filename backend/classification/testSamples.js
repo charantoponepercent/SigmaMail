@@ -19,9 +19,9 @@ async function runSamples() {
     const result = await classifyEmailFull(payload, { disableSemantic: true });
     const summary = result.candidates.slice(0, 3).map(c => `${c.name}:${c.score}`).join(", ");
 
-    console.log(`\n=== ${sample.label} ===`);
-    console.log(`Expected: ${sample.expected} | Predicted: ${result.top} (score ${result.topScore})`);
-    console.log(`Top 3: ${summary}`);
+    // console.log(`\n=== ${sample.label} ===`);
+    // console.log(`Expected: ${sample.expected} | Predicted: ${result.top} (score ${result.topScore})`);
+    // console.log(`Top 3: ${summary}`);
   }
 }
 

@@ -280,12 +280,9 @@ export default function Dashboard() {
       const es = new EventSource(
         `${API_BASE}/api-sse/sse/inbox?userId=${parsed.id}`
       );
-      console.log("🟢 SSE connected for user:", parsed.id);
 
       es.onmessage = (event) => {
-        console.log("📨 SSE raw event:", event.data);
         const payload = JSON.parse(event.data);
-        console.log("📦 SSE parsed payload:", payload);
 
         if (payload.type === "NEW_EMAIL") {
           setNewMailCount((c) => c + 1);
@@ -298,9 +295,6 @@ export default function Dashboard() {
             setShowNewTag(false);
             setNewMailCount(0);
           }, 2 * 60 * 1000); // 2 minutes
-
-          console.log("✅ SSE NEW_EMAIL accepted, triggering inbox refresh");
-          console.log("🆕 SSE NEW_EMAIL received → FORCE inbox reload");
 
           // 🔥 CRITICAL FIX: force fresh fetch, do NOT rely on old closures
           if (activeFilterRef.current === "TODAY") {
@@ -353,7 +347,6 @@ export default function Dashboard() {
 
     // 🧠 Today’s Decisions routing (temporary)
     if (isDecisionFilter(selectedAccount)) {
-      console.log("🧠 Decision filter selected:", selectedAccount);
       setActiveFilter("TODAY");
       setLoadingMessages(true);
 
@@ -367,7 +360,6 @@ export default function Dashboard() {
       return;
     }
 
-    console.log("🔄 Inbox fetch triggered:", activeFilter);
     setLoadingMessages(true);
 
     if (activeFilter === "TODAY") {
@@ -485,8 +477,6 @@ export default function Dashboard() {
   }, [loadOrchestratorStatus]);
 
   if (!mounted) return null;
-
-  console.log("🖥️ Dashboard render, messages:", messages.length);
   // ✅ UI Layout
   return (
     

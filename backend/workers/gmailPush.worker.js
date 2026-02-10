@@ -14,18 +14,11 @@ const { Worker, Queue } = BullMQ;
 // QueueScheduler is not required in BullMQ v4+
 const sseQueue = new Queue("sse-events", { connection: redis });
 
-console.log("🧭 QueueScheduler active for sse-events");
-
-console.log("📡 Gmail Push Worker running");
-
 
 new Worker(
   "gmail-push",
   async (job) => {
     const { emailAddress, historyId } = job.data;
-
-    console.log("📨 Push received:", emailAddress, historyId);
-
     const account = await EmailAccount.findOne({ email: emailAddress });
     if (!account) return;
 
@@ -44,16 +37,11 @@ new Worker(
       account.lastHistoryId &&
       BigInt(incomingHistoryId) <= BigInt(account.lastHistoryId)
     ) {
-      console.log(
-        "⏭️ Skipping already processed historyId:",
-        incomingHistoryId
-      );
       return;
     }
 
     // 🧠 First push after watch registration — only set cursor
     if (!account.lastHistoryId) {
-      console.log("🧠 Initial history cursor set:", incomingHistoryId);
       account.lastHistoryId = incomingHistoryId;
       await account.save();
       return;
@@ -97,8 +85,6 @@ new Worker(
       }
     }
 
-    console.log("📥 New messages:", messageIds.size);
-    console.log("🧪 Preparing SSE jobs for user:", account.userId.toString());
     if (labelEvents.length > 0) {
       console.log("🏷️ Label events:", labelEvents);
     }
@@ -148,10 +134,6 @@ new Worker(
           $set: { hasUnread: true },
         }
       );
-
-      console.log(
-        `📌 Email ${ev.messageId} marked as ${isRead ? "READ" : "UNREAD"} (thread updated)`
-      );
       // 🔔 Queue SSE event for read/unread change
       await sseQueue.add("EMAIL_READ_STATE", {
         userId: email.userId.toString(),
@@ -161,7 +143,6 @@ new Worker(
           isRead,
         },
       });
-      console.log("📤 SSE job queued → EMAIL_READ_STATE for user:", email.userId.toString());
     }
 
     for (const messageId of messageIds) {
@@ -172,7 +153,6 @@ new Worker(
       }).select("_id");
 
       if (exists) {
-        console.log("⏭️ Skipping duplicate message:", messageId);
         continue;
       }
 
@@ -180,14 +160,11 @@ new Worker(
 
       if (!emailDoc) continue;
 
-      console.log("📤 SSE emit → inbox (NEW_EMAIL)", emailDoc.messageId);
 
       await sseQueue.add("NEW_EMAIL", {
         userId: account.userId.toString(),
         data: emailDoc,
       });
-      console.log("📤 SSE job queued → NEW_EMAIL for user:", account.userId.toString());
-      console.log("🧱 BullMQ job added → sse-events NEW_EMAIL");
     }
 
     // ✅ Advance cursor only AFTER processing

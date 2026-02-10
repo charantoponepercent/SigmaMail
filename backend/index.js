@@ -71,7 +71,7 @@ new Worker(
       data: job.data.data || null,
     });
 
-    console.log("📡 SSE emitted → NEW_EMAIL for user:", job.data.userId);
+    // console.log("📡 SSE emitted → NEW_EMAIL for user:", job.data.userId);
   },
   { connection: redis }
 );
