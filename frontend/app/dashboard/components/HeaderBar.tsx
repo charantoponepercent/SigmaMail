@@ -23,7 +23,7 @@ export default function HeaderBar({
   onSearchKeyDown,
 }: Props) {
   return (
-    <div className="border-b border-gray-200 px-5 py-3 sticky top-0 bg-white/80 backdrop-blur-md z-10">
+    <div className="sticky top-0 z-10 border-b border-slate-200/80 bg-gradient-to-b from-white via-white to-slate-50/70 px-5 py-3 backdrop-blur-md">
       <div className="flex items-center gap-3 w-full">
         <SearchBar
           value={searchQuery}
