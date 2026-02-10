@@ -1,4 +1,5 @@
 import CategorizationRule from "../models/CategorizationRule.js";
+import Email from "../models/Email.js";
 import { CATEGORIZATION_RULES } from "./categorizationRules.js";
 
 const STOP_WORDS = new Set([
@@ -10,6 +11,10 @@ const STOP_WORDS = new Set([
 
 function normalizeText(t = "") {
   return (t || "").toString().toLowerCase();
+}
+
+function escapeRegex(text = "") {
+  return String(text).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function extractEmailAddress(from = "") {
@@ -142,7 +147,138 @@ export async function computeFeedbackScoresForEmail({ userId, email }) {
   return scores;
 }
 
+export async function propagateCategoryToRelatedEmails({
+  userId,
+  seedEmail,
+  correctedCategory,
+  maxCandidates = 500,
+  maxUpdates = 200,
+}) {
+  if (!userId || !seedEmail || !correctedCategory) {
+    return { updatedCount: 0, scannedCount: 0, relatedEmailIds: [] };
+  }
+
+  const seedSenderEmail = extractEmailAddress(seedEmail.from || "");
+  const seedSenderDomain = extractDomain(seedSenderEmail);
+  const seedKeywords = extractKeywords(
+    [
+      seedEmail.subject || "",
+      seedEmail.snippet || "",
+      seedEmail.textBody || "",
+      seedEmail.htmlBodyProcessed || "",
+    ].join("\n"),
+    14
+  );
+  const seedKeywordSet = new Set(seedKeywords);
+  const seedSubjectNorm = normalizeText(seedEmail.subject || "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const orClauses = [];
+  if (seedEmail.threadId) orClauses.push({ threadId: seedEmail.threadId });
+  if (seedSenderEmail) {
+    orClauses.push({
+      from: { $regex: escapeRegex(seedSenderEmail), $options: "i" },
+    });
+  }
+  if (seedSenderDomain) {
+    orClauses.push({
+      from: { $regex: `@${escapeRegex(seedSenderDomain)}\\b`, $options: "i" },
+    });
+  }
+  for (const kw of seedKeywords.slice(0, 6)) {
+    const re = `\\b${escapeRegex(kw)}\\b`;
+    orClauses.push({ subject: { $regex: re, $options: "i" } });
+    orClauses.push({ snippet: { $regex: re, $options: "i" } });
+  }
+
+  if (orClauses.length === 0) {
+    return { updatedCount: 0, scannedCount: 0, relatedEmailIds: [] };
+  }
+
+  const candidates = await Email.find({
+    userId,
+    _id: { $ne: seedEmail._id },
+    $or: orClauses,
+  })
+    .select("_id threadId from subject snippet textBody category")
+    .sort({ date: -1 })
+    .limit(Math.max(50, maxCandidates))
+    .lean();
+
+  const relatedIds = [];
+
+  for (const candidate of candidates) {
+    if (!candidate?._id) continue;
+    const candidateSenderEmail = extractEmailAddress(candidate.from || "");
+    const candidateDomain = extractDomain(candidateSenderEmail);
+    const candidateSubjectNorm = normalizeText(candidate.subject || "")
+      .replace(/[^a-z0-9\s]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    const candidateKeywords = extractKeywords(
+      [candidate.subject || "", candidate.snippet || "", candidate.textBody || ""].join("\n"),
+      18
+    );
+    const overlap = candidateKeywords.filter((kw) => seedKeywordSet.has(kw)).length;
+
+    let include = false;
+    let score = 0;
+
+    if (seedEmail.threadId && candidate.threadId === seedEmail.threadId) {
+      include = true;
+    }
+
+    if (!include && seedSenderEmail && candidateSenderEmail === seedSenderEmail) {
+      include = true;
+    }
+
+    if (!include) {
+      if (seedSenderDomain && candidateDomain === seedSenderDomain) score += 3;
+      if (overlap > 0) score += Math.min(4, overlap * 1.2);
+      if (
+        seedSubjectNorm &&
+        candidateSubjectNorm &&
+        (candidateSubjectNorm.includes(seedSubjectNorm) || seedSubjectNorm.includes(candidateSubjectNorm))
+      ) {
+        score += 2;
+      }
+
+      include =
+        score >= 6 ||
+        (seedSenderDomain && candidateDomain === seedSenderDomain && overlap >= 2) ||
+        overlap >= 4;
+    }
+
+    if (!include) continue;
+    relatedIds.push(String(candidate._id));
+    if (relatedIds.length >= maxUpdates) break;
+  }
+
+  if (relatedIds.length === 0) {
+    return { updatedCount: 0, scannedCount: candidates.length, relatedEmailIds: [] };
+  }
+
+  const updateRes = await Email.updateMany(
+    { userId, _id: { $in: relatedIds } },
+    {
+      $set: {
+        category: correctedCategory,
+        categoryScore: 1,
+      },
+    }
+  );
+
+  return {
+    updatedCount: Number(updateRes.modifiedCount || 0),
+    scannedCount: candidates.length,
+    relatedEmailIds: relatedIds,
+  };
+}
+
 export default {
   recordCategorizationFeedback,
   computeFeedbackScoresForEmail,
+  propagateCategoryToRelatedEmails,
 };

@@ -7,7 +7,10 @@ import { runGmailSyncForUser } from "../workers/gmailSyncWorker.js";
 import Email from "../models/Email.js";
 import Thread from "../models/Thread.js";
 import mongoose from "mongoose";
-import { recordCategorizationFeedback } from "../classification/feedbackLearning.js";
+import {
+  recordCategorizationFeedback,
+  propagateCategoryToRelatedEmails,
+} from "../classification/feedbackLearning.js";
 import { CATEGORIZATION_RULES } from "../classification/categorizationRules.js";
 import { redis } from "../utils/redis.js";
 import {
@@ -343,7 +346,7 @@ router.get("/inbox/monthly", async (req, res) => {
 router.post("/emails/:id/category-feedback", async (req, res) => {
   try {
     const { id } = req.params;
-    const { category } = req.body || {};
+    const { category, applyRelated = true } = req.body || {};
     const userId = req.user.id;
 
     if (!category || !CATEGORIZATION_RULES.CATEGORY_LIST.includes(category)) {
@@ -405,11 +408,29 @@ router.post("/emails/:id/category-feedback", async (req, res) => {
     email.categoryScore = 1;
     await email.save();
 
+    let propagation = {
+      updatedCount: 0,
+      scannedCount: 0,
+      relatedEmailIds: [],
+    };
+
+    if (applyRelated !== false) {
+      propagation = await propagateCategoryToRelatedEmails({
+        userId,
+        seedEmail: email,
+        correctedCategory: category,
+      });
+    }
+
     return res.json({
       ok: true,
       message: "Feedback recorded and category updated",
       emailId: email._id,
       category,
+      updatedCount: 1 + propagation.updatedCount,
+      relatedUpdatedCount: propagation.updatedCount,
+      relatedEmailIds: propagation.relatedEmailIds,
+      scannedRelatedCandidates: propagation.scannedCount,
     });
   } catch (err) {
     console.error("Category feedback error:", err);

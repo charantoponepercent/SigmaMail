@@ -108,10 +108,13 @@ export default function Dashboard() {
   const [showNewTag, setShowNewTag] = useState(false);
   const newMailTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  const applyCategoryLocally = useCallback((emailId: string, category: string) => {
+  const applyCategoryLocallyBulk = useCallback((emailIds: string[], category: string) => {
+    const idSet = new Set((emailIds || []).filter(Boolean));
+    if (idSet.size === 0) return;
+
     const patchMessage = (msg: DashboardMessage) => {
       const msgId = msg._id || msg.id;
-      if (msgId !== emailId) return msg;
+      if (!msgId || !idSet.has(msgId)) return msg;
       return { ...msg, category };
     };
 
@@ -123,7 +126,7 @@ export default function Dashboard() {
         ...prev,
         messages: prev.messages.map((msg: DashboardMessage) => {
           const msgId = msg._id || msg.id;
-          if (msgId !== emailId) return msg;
+          if (!msgId || !idSet.has(msgId)) return msg;
           return { ...msg, category };
         }),
       };
@@ -178,7 +181,11 @@ export default function Dashboard() {
   });
 
   const onCategoryFeedback = useCallback(async (emailId: string, category: string) => {
-    applyCategoryLocally(emailId, category);
+    const shouldApply = window.confirm(
+      `Change category to "${category}" and apply to related emails from same sender/content keywords?`
+    );
+    if (!shouldApply) return;
+
     const token = localStorage.getItem("token");
 
     try {
@@ -188,7 +195,7 @@ export default function Dashboard() {
           Authorization: `Bearer ${token}`,
         },
         method: "POST",
-        body: JSON.stringify({ category }),
+        body: JSON.stringify({ category, applyRelated: true }),
       });
 
       if (!res.ok) {
@@ -201,6 +208,11 @@ export default function Dashboard() {
         }
         throw new Error(message);
       }
+
+      const data = await res.json();
+      const relatedIds = Array.isArray(data?.relatedEmailIds) ? data.relatedEmailIds : [];
+      const mergedIds = Array.from(new Set([emailId, ...relatedIds]));
+      applyCategoryLocallyBulk(mergedIds, category);
     } catch (err) {
       console.error("Category feedback failed:", err);
       if (activeFilter === "TODAY") loadToday(true);
@@ -208,7 +220,7 @@ export default function Dashboard() {
       if (activeFilter === "WEEK") loadWeek(true);
       if (activeFilter === "MONTHLY") loadMonthly(true);
     }
-  }, [activeFilter, applyCategoryLocally, loadMonthly, loadToday, loadWeek, loadYesterday]);
+  }, [activeFilter, applyCategoryLocallyBulk, loadMonthly, loadToday, loadWeek, loadYesterday]);
 
   const loadOrchestratorStatus = useCallback(async () => {
     const token = localStorage.getItem("token");
