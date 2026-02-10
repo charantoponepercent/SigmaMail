@@ -16,6 +16,8 @@ import {
   FileText,
   FileSpreadsheet,
   File,
+  ExternalLink,
+  MessageSquareQuote,
 } from "lucide-react";
 import { format } from "date-fns";
 import SecureEmailViewer from "@/components/SecureEmailViewer";
@@ -344,6 +346,11 @@ export default function ThreadViewer({ thread, onClose, onPrev, onNext, onCatego
     return <File className="h-4 w-4 text-slate-500" />;
   };
 
+  const accountSegment = accountEmail ? encodeURIComponent(accountEmail) : "0";
+  const viewInGmailUrl = thread.threadId
+    ? `https://mail.google.com/mail/u/${accountSegment}/#all/${thread.threadId}`
+    : null;
+
   const calculateDetailsPosition = useCallback(() => {
     if (typeof window === "undefined" || !detailsButtonRef.current) {
       return { top: 0, left: 0 };
@@ -431,7 +438,7 @@ export default function ThreadViewer({ thread, onClose, onPrev, onNext, onCatego
           <button
             type="button"
             onClick={() => setAttachmentsOpen((prev) => !prev)}
-            className="group inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-white"
+            className="group inline-flex cursor-pointer items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-white"
           >
             <Paperclip className="h-4 w-4 text-slate-500 transition group-hover:text-slate-700" />
             <span>Attachments ({threadAttachments.length})</span>
@@ -441,6 +448,18 @@ export default function ThreadViewer({ thread, onClose, onPrev, onNext, onCatego
               }`}
             />
           </button>
+        )}
+
+        {viewInGmailUrl && (
+          <a
+            href={viewInGmailUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group inline-flex cursor-pointer items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+          >
+            <ExternalLink className="h-4 w-4 text-slate-500 transition group-hover:text-slate-700" />
+            <span>View in Gmail</span>
+          </a>
         )}
       </div>        
 
@@ -496,7 +515,7 @@ export default function ThreadViewer({ thread, onClose, onPrev, onNext, onCatego
             ref={detailsButtonRef}
             type="button"
             onClick={toggleDetails}
-            className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-[11px] font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+            className="inline-flex items-center gap-1 rounded-full cursor-pointer border border-gray-200 bg-white px-3 py-1.5 text-[11px] font-medium text-gray-700 hover:bg-gray-50 transition-colors"
             aria-expanded={detailsOpen}
             aria-label={detailsOpen ? "Hide message details" : "Show message details"}
           >
@@ -510,7 +529,7 @@ export default function ThreadViewer({ thread, onClose, onPrev, onNext, onCatego
                 <button
                   type="button"
                   disabled={savingCategory}
-                  className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-[11px] font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+                  className="inline-flex items-center gap-1 rounded-full border border-gray-200 cursor-pointer bg-white px-3 py-1.5 text-[11px] font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
                 >
                   {savingCategory ? "Saving..." : "Correct Category"}
                   <ChevronDown className="h-3.5 w-3.5" />
@@ -683,6 +702,21 @@ export default function ThreadViewer({ thread, onClose, onPrev, onNext, onCatego
               const senderName = msg.from?.split("<")[0]?.trim() || "Unknown";
               const receiverName = msg.to?.split("<")[0]?.trim() || "You";
               const previewText = getPreviewText(clean, msg.textBody || msg.body);
+              const previousMessage = idx > 0 ? sorted[idx - 1] : null;
+              const previousSender =
+                previousMessage?.from?.split("<")[0]?.trim() || "previous sender";
+              const previousDate = previousMessage?.date
+                ? format(new Date(previousMessage.date), "EEE, MMM d, yyyy 'at' h:mm a")
+                : "";
+              const replyContextLabel = previousMessage
+                ? `On ${previousDate || "earlier message"}, ${previousSender} wrote`
+                : "";
+              const messageMetaDate = msg.date
+                ? format(new Date(msg.date), "EEE, MMM d, yyyy 'at' h:mm a")
+                : "";
+              const msgViewInGmailUrl = msg.threadId
+                ? `https://mail.google.com/mail/u/${accountSegment}/#all/${msg.threadId}`
+                : viewInGmailUrl;
 
               return (
                 <article
@@ -736,6 +770,12 @@ export default function ThreadViewer({ thread, onClose, onPrev, onNext, onCatego
                             <p className="mt-0.5 truncate text-[13px] text-slate-500">
                               To: {receiverName}
                             </p>
+                            {enableCollapse && idx > 0 && (
+                              <p className="mt-1 inline-flex items-center gap-1 text-[11px] text-slate-500">
+                                <MessageSquareQuote className="h-3.5 w-3.5 text-slate-400" />
+                                {replyContextLabel}
+                              </p>
+                            )}
                             {enableCollapse && !isOpen && (
                               <p className="mt-2 text-[13px] leading-5 text-slate-600">
                                 {previewText}
@@ -761,6 +801,49 @@ export default function ThreadViewer({ thread, onClose, onPrev, onNext, onCatego
 
                     {isOpen && (
                       <div className="border-t border-slate-100 px-5 py-5 sm:px-7 sm:py-6">
+                        {enableCollapse && (
+                          <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50/80 p-3">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                                Message Metadata
+                              </p>
+                              <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-medium text-slate-600">
+                                Message {idx + 1} of {sorted.length}
+                              </span>
+                            </div>
+                            <div className="mt-2 grid grid-cols-1 gap-1 text-[12px] text-slate-600 sm:grid-cols-2">
+                              <p className="truncate">
+                                <span className="font-semibold text-slate-700">From:</span> {msg.from || "—"}
+                              </p>
+                              <p className="truncate">
+                                <span className="font-semibold text-slate-700">To:</span> {msg.to || "—"}
+                              </p>
+                              <p className="truncate">
+                                <span className="font-semibold text-slate-700">Date:</span> {messageMetaDate || "—"}
+                              </p>
+                              <p className="truncate">
+                                <span className="font-semibold text-slate-700">Message ID:</span> {msg.messageId || msg.id || "—"}
+                              </p>
+                            </div>
+                            {idx > 0 && (
+                              <p className="mt-2 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] text-slate-600">
+                                {replyContextLabel}:
+                              </p>
+                            )}
+                            {msgViewInGmailUrl && (
+                              <a
+                                href={msgViewInGmailUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-700 transition hover:bg-slate-100"
+                              >
+                                <ExternalLink className="h-3.5 w-3.5 text-slate-500" />
+                                View this thread in Gmail
+                              </a>
+                            )}
+                          </div>
+                        )}
+
                         <div className="rounded-xl border border-slate-100 bg-white p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] sm:p-5">
                           <SecureEmailViewer
                             html={clean}

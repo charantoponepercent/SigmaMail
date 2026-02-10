@@ -7,7 +7,6 @@ import { useCallback, useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { API_BASE } from "@/lib/api";
 import DisconnectDialog from "@/components/DisconnectDialog";
-import AIBubbleChat from "@/components/AIBubbleChat";
 import SearchCommandPalette from "./components/layout/SearchCommandPalette";
 import { useInboxLoader } from "./hooks/useInboxLoader";
 import { useSearch } from "./hooks/useSearch";
@@ -21,6 +20,7 @@ import { formatDate, cleanSubject, getAvatarInitial } from "./components/utils/m
 import { useThreadLoader } from "./hooks/useThreadLoader";
 import DigestModal from "./components/DigestModal";
 import OrchestratorStatusPanel from "./components/OrchestratorStatusPanel";
+import ThreadSummaryPanel from "./components/ThreadSummaryPanel";
 import { DashboardMessage, DashboardThread } from "./types";
 
 type DashboardUser = { id: string; name: string };
@@ -100,6 +100,7 @@ export default function Dashboard() {
   const [orchestratorOpen, setOrchestratorOpen] = useState(false);
   const [orchestratorStatus, setOrchestratorStatus] = useState<OrchestratorStatusItem[]>([]);
   const [orchestratorLoading, setOrchestratorLoading] = useState(false);
+  const [threadSummaryOpen, setThreadSummaryOpen] = useState(false);
   const sseRef = useRef<EventSource | null>(null);
   const activeFilterRef = useRef(activeFilter);
 
@@ -416,6 +417,10 @@ export default function Dashboard() {
     loadOrchestratorStatus();
   }
 
+  function showThreadSummary() {
+    setThreadSummaryOpen(true);
+  }
+
   async function disconnectAccount(email: string) {
     const token = localStorage.getItem("token");
     try {
@@ -486,10 +491,6 @@ export default function Dashboard() {
   return (
     
     <div className="flex h-screen text-gray-800 text-[14px] leading-tight">
-      <AIBubbleChat 
-        currentThreadId={selectedThreadId ?? undefined}
-        currentSubject={selectedMessage?.messages?.[0]?.subject || "(No Subject)"}
-      />
       <SearchCommandPalette
         open={cmdOpen}
         onClose={() => setCmdOpen(false)}
@@ -516,6 +517,7 @@ export default function Dashboard() {
         setAccountToDisconnect={setAccountToDisconnect}
         onShowDigest={showDigest}
         onShowOrchestrator={showOrchestrator}
+        onShowThreadSummary={showThreadSummary}
       />
 
       {/* MAIN CONTENT AREA */}
@@ -587,6 +589,20 @@ export default function Dashboard() {
         loading={orchestratorLoading}
         onRefresh={loadOrchestratorStatus}
         onClear={clearOrchestratorStatus}
+      />
+
+      <ThreadSummaryPanel
+        open={threadSummaryOpen}
+        onClose={() => setThreadSummaryOpen(false)}
+        threadId={selectedThreadId}
+        threadSubject={
+          selectedMessage?.messages && selectedMessage.messages.length > 0
+            ? selectedMessage.messages[selectedMessage.messages.length - 1]?.subject || "(No Subject)"
+            : "(No Subject)"
+        }
+        messageCount={selectedMessage?.messages?.length || 0}
+        accountEmail={selectedMessage?.account || selectedMessage?.messages?.[0]?.accountEmail || null}
+        onRunComplete={loadOrchestratorStatus}
       />
 
       <DisconnectDialog

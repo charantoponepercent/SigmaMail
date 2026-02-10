@@ -7,6 +7,7 @@ import {
   RefreshCw,
   BookOpen,
   Sparkles,
+  FileText,
   AlertCircle,
   Clock,
   Reply,
@@ -39,6 +40,7 @@ type Props = {
   setAccountToDisconnect: (email: string | null) => void;
   onShowDigest?: () => void;
   onShowOrchestrator?: () => void;
+  onShowThreadSummary?: () => void;
 };
 
 export default function Sidebar({
@@ -53,6 +55,7 @@ export default function Sidebar({
   setAccountToDisconnect,
   onShowDigest,
   onShowOrchestrator,
+  onShowThreadSummary,
 }: Props) {
   
   return (
@@ -173,6 +176,14 @@ export default function Sidebar({
         >
           <BookOpen className="w-4 h-4 text-purple-600" />
           <span className="text-[13.5px] font-medium">AI Daily Digest</span>
+        </div>
+
+        <div
+          onClick={() => onShowThreadSummary && onShowThreadSummary()}
+          className="mt-1 flex items-center gap-3 rounded-lg border border-transparent px-3 py-2.5 text-gray-700 transition-all hover:bg-gray-100 cursor-pointer"
+        >
+          <FileText className="w-4 h-4 text-cyan-600" />
+          <span className="text-[13.5px] font-medium">AI Thread Summary</span>
         </div>
       </div>
 
