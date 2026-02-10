@@ -1,6 +1,15 @@
 "use client";
 
 import { useCallback } from "react";
+import { DashboardMessage, DashboardThread } from "../types";
+
+type UseThreadNavigationArgs = {
+  messages: DashboardMessage[];
+  selectedMessage: DashboardThread | null;
+  selectedThreadId: string | null;
+  selectedAccount: string | null;
+  openMessage: (id: string) => void;
+};
 
 export function useThreadNavigation({
   messages,
@@ -8,7 +17,7 @@ export function useThreadNavigation({
   selectedThreadId,
   selectedAccount,
   openMessage,
-}) {
+}: UseThreadNavigationArgs) {
   // Get visible (non-hidden) threads
   const getVisibleThreads = useCallback(() => {
     return messages.filter((m) => !m.hidden);
@@ -29,7 +38,7 @@ export function useThreadNavigation({
 
   // Get index inside visible list
   const getSelectedIndex = useCallback(
-    (visible) => {
+    (visible: DashboardMessage[]) => {
       const key = getCurrentThreadKey();
       if (!key) return -1;
       return visible.findIndex((m) => (m.threadId || m.id) === key);

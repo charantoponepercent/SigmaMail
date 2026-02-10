@@ -1,4 +1,3 @@
-/* eslint-disable react-hooks/exhaustive-deps */
 /* eslint-disable react-hooks/rules-of-hooks */
 /* eslint-disable @next/next/no-img-element */
 "use client";
@@ -31,7 +30,7 @@ interface ThreadAttachment {
 }
 
 interface ThreadEmail {
-  attachments: { filename: string; mimeType: string; storageUrl?: string; isExternal?: boolean; provider?: string }[];
+  attachments?: { filename: string; mimeType: string; storageUrl?: string; isExternal?: boolean; provider?: string }[];
   _id?: string;
   messageId?: string;
   id?: string;
@@ -53,6 +52,15 @@ interface ThreadEmail {
   signedBy?: string;
   security?: string;
   headers?: Record<string, string>;
+  needsReply?: boolean;
+  needsReplyScore?: number;
+  needsReplyReason?: string;
+  hasDeadline?: boolean;
+  deadlineAt?: string;
+  deadlineConfidence?: number;
+  isFollowUp?: boolean;
+  followUpWaitingSince?: string;
+  isOverdueFollowUp?: boolean;
 }
 
 interface ThreadViewerProps {
@@ -210,6 +218,43 @@ export default function ThreadViewer({ thread, onClose, onPrev, onNext, onCatego
     inferredMailedBy.includes("@") ? inferredMailedBy.split("@")[1] : ""
   );
 
+  const formatSignalDeadline = (value?: string) => {
+    if (!value) return "";
+    try {
+      return format(new Date(value), "MMM d, h:mm a");
+    } catch {
+      return value;
+    }
+  };
+
+  const signalBadges = [
+    latestMessage?.needsReply
+      ? {
+          label: "Needs Reply",
+          className: "bg-sky-100 text-sky-700 border-sky-200",
+        }
+      : null,
+    latestMessage?.hasDeadline
+      ? {
+          label: latestMessage?.deadlineAt
+            ? `Deadline ${formatSignalDeadline(latestMessage.deadlineAt)}`
+            : "Deadline",
+          className: "bg-amber-100 text-amber-800 border-amber-200",
+        }
+      : null,
+    latestMessage?.isOverdueFollowUp
+      ? {
+          label: "Overdue Follow-up",
+          className: "bg-rose-100 text-rose-700 border-rose-200",
+        }
+      : latestMessage?.isFollowUp
+      ? {
+          label: "Follow-up",
+          className: "bg-emerald-100 text-emerald-700 border-emerald-200",
+        }
+      : null,
+  ].filter(Boolean) as Array<{ label: string; className: string }>;
+
   const detailsRows = [
     { label: "From", value: latestMessage?.from || "—" },
     { label: "To", value: latestMessage?.to || "—" },
@@ -296,6 +341,15 @@ export default function ThreadViewer({ thread, onClose, onPrev, onNext, onCatego
           >
             {threadCategory}
           </span>
+
+          {signalBadges.map((badge) => (
+            <span
+              key={badge.label}
+              className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium ${badge.className}`}
+            >
+              {badge.label}
+            </span>
+          ))}
 
           <div className="relative">
             <button

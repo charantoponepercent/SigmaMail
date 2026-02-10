@@ -102,6 +102,43 @@ function buildDeliveryMetadata(headerMap = {}) {
   };
 }
 
+const accountEmailCache = new Map();
+const ACCOUNT_EMAIL_CACHE_TTL_MS = 5 * 60 * 1000;
+
+async function getUserAccountEmailSet(userId) {
+  const key = String(userId || "");
+  const now = Date.now();
+  const cached = accountEmailCache.get(key);
+  if (cached && cached.expiresAt > now) {
+    return cached.values;
+  }
+
+  const accounts = await EmailAccount.find(
+    { userId },
+    { email: 1 }
+  ).lean();
+  const values = new Set(
+    (accounts || [])
+      .map((acc) => String(acc?.email || "").toLowerCase().trim())
+      .filter(Boolean)
+  );
+  accountEmailCache.set(key, {
+    values,
+    expiresAt: now + ACCOUNT_EMAIL_CACHE_TTL_MS,
+  });
+  return values;
+}
+
+function isSenderFromUserAccounts(fromHeader = "", accountEmails = new Set()) {
+  const fromLower = String(fromHeader || "").toLowerCase();
+  const senderEmail = extractEmail(fromHeader).toLowerCase();
+  if (senderEmail && accountEmails.has(senderEmail)) return true;
+  for (const email of accountEmails) {
+    if (email && fromLower.includes(email)) return true;
+  }
+  return false;
+}
+
 // Main Sync Function
 export async function runGmailSyncForUser(userId) {
   const accounts = await EmailAccount.find({ userId });
@@ -163,8 +200,8 @@ export async function syncSingleMessage(gmail, messageId, account) {
   const composedBody = finalHtml || (textBody ? `<pre>${textBody}</pre>` : "");
 
   const fromHeader = find("From") || "";
-  // 🔥 FIX 1: Case-insensitive check to correctly identify incoming vs outgoing
-  const isIncoming = !fromHeader.toLowerCase().includes(account.email.toLowerCase());
+  const accountEmails = await getUserAccountEmailSet(account.userId);
+  const isIncoming = !isSenderFromUserAccounts(fromHeader, accountEmails);
 
   // -------------------------------------------------------
   // CLOUDINARY ATTACHMENTS UPLOAD
@@ -418,16 +455,35 @@ export async function syncSingleMessage(gmail, messageId, account) {
   // ----------------------------------------
   // ACTION INTELLIGENCE (AI) - FIXED
   // ----------------------------------------
-  // Construct a cleaner object for the AI engine
-  // 🔥 FIX 2: Ensure 'text' property exists (evaluators use 'text', DB uses 'textBody')
-  const emailForEvaluator = {
-    ...emailDoc.toObject(),
-    text: emailDoc.textBody || emailDoc.snippet || "",
-    subject: emailDoc.subject || ""
-  };
+  // Build full thread context so follow-up + reply detection can reason over conversation history.
+  const threadMessages = await Email.find({
+    userId: account.userId,
+    threadId: emailDoc.threadId,
+  })
+    .select("_id messageId subject textBody snippet from to date isIncoming")
+    .sort({ date: 1 })
+    .lean();
+
+  const normalizedThreadMessages = threadMessages.map((msg) => ({
+    ...msg,
+    id: msg._id?.toString?.() || msg.messageId,
+    text: msg.textBody || msg.snippet || "",
+    subject: msg.subject || "",
+  }));
+
+  const emailForEvaluator =
+    normalizedThreadMessages.find(
+      (msg) => String(msg._id) === String(emailDoc._id)
+    ) || {
+      ...emailDoc.toObject(),
+      id: emailDoc._id?.toString?.() || emailDoc.messageId,
+      text: emailDoc.textBody || emailDoc.snippet || "",
+      subject: emailDoc.subject || "",
+    };
 
   const threadMeta = {
-    lastMessageFrom: emailDoc.isIncoming ? "other" : "me",
+    messages: normalizedThreadMessages,
+    lastMessageFrom: emailDoc.isIncoming ? "them" : "me",
     lastMessageAt: emailDoc.date,
   };
 

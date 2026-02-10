@@ -65,10 +65,14 @@ const POLITE_REQUEST_PATTERNS = [
 // 5. NEGATIVE SIGNALS: Automated or FYI mail (strong penalty)
 const AUTOMATED_PATTERNS = [
   /unsubscribe/i,
+  /newsletter/i,
+  /digest/i,
+  /promotion/i,
   /view\s+in\s+browser/i,
   /privacy\s+policy/i,
   /terms\s+of\s+service/i,
   /no-reply@/i,
+  /noreply@/i,
   /don't\s+reply/i,
   /do\s+not\s+reply/i,
   /automated\s+message/i,

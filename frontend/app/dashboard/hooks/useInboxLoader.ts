@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import { useCallback, useRef } from "react";
+import { useCallback } from "react";
 import { API_BASE } from "@/lib/api";
 
 export function useInboxLoader({
@@ -102,17 +102,30 @@ export function useInboxLoader({
   );
 
   // Public loaders
-  const loadToday = (force = false, decisionType?: string) => {
+  const loadToday = (
+    force = false,
+    decisionType?: string,
+    selectedAccount?: string | null
+  ) => {
+    void selectedAccount;
     const query = decisionType
-      ? `?decision=${decisionType}`
+      ? `?decision=${decisionType}&scope=today`
       : "";
     return loadInbox("today", force, query);
   };
-  const loadYesterday = (force = false) => loadInbox("yesterday", force);
-  const loadWeek = (force = false) => loadInbox("week", force);
+  const loadYesterday = (force = false, selectedAccount?: string | null) => {
+    void selectedAccount;
+    return loadInbox("yesterday", force);
+  };
+  const loadWeek = (force = false, selectedAccount?: string | null) => {
+    void selectedAccount;
+    return loadInbox("week", force);
+  };
 
-  const loadMonthly = (force = false) =>
-    loadInbox("monthly?limitSenders=8&lookbackDays=30", force);
+  const loadMonthly = (force = false, selectedAccount?: string | null) => {
+    void selectedAccount;
+    return loadInbox("monthly?limitSenders=8&lookbackDays=30", force);
+  };
 
   return {
     loadToday,

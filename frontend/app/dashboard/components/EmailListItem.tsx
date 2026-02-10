@@ -32,11 +32,12 @@ export default function EmailListItem({
   });
 
   useEffect(() => {
-    if (!showNew) return;
+    if (!showNew || !msg.createdAt) return;
+    const createdAtMs = new Date(msg.createdAt).getTime();
 
     const remaining =
       2 * 60 * 1000 -
-      (Date.now() - new Date(msg.createdAt).getTime());
+      (Date.now() - createdAtMs);
 
     if (remaining <= 0) {
       setShowNew(false);
@@ -46,6 +47,16 @@ export default function EmailListItem({
     const t = setTimeout(() => setShowNew(false), remaining);
     return () => clearTimeout(t);
   }, [showNew, msg.createdAt]);
+
+  const formatActionDate = (value?: string) => {
+    if (!value) return "";
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return "";
+    return parsed.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+    });
+  };
 
   return (
     <div
@@ -92,6 +103,26 @@ export default function EmailListItem({
                 Bill Due
               </span>
             )}
+            {msg.needsReply && (
+              <span className="px-2 py-0.5 text-[10px] font-medium text-sky-700 bg-sky-100 rounded-full flex-shrink-0">
+                Needs Reply
+              </span>
+            )}
+            {msg.hasDeadline && (
+              <span className="px-2 py-0.5 text-[10px] font-medium text-amber-700 bg-amber-100 rounded-full flex-shrink-0">
+                {msg.deadlineAt ? `Deadline ${formatActionDate(msg.deadlineAt)}` : "Deadline"}
+              </span>
+            )}
+            {msg.isOverdueFollowUp && (
+              <span className="px-2 py-0.5 text-[10px] font-medium text-rose-700 bg-rose-100 rounded-full flex-shrink-0">
+                Overdue Follow-up
+              </span>
+            )}
+            {!msg.isOverdueFollowUp && msg.isFollowUp && (
+              <span className="px-2 py-0.5 text-[10px] font-medium text-emerald-700 bg-emerald-100 rounded-full flex-shrink-0">
+                Follow-up
+              </span>
+            )}
             {typeof msg.searchScore === "number" && (
               <span className="px-2 py-0.5 text-[10px] font-medium text-indigo-700 bg-indigo-100 rounded-full flex-shrink-0">
                 Match {Math.round(msg.searchScore * 100)}%
@@ -108,9 +139,9 @@ export default function EmailListItem({
           <span className="text-xs text-gray-500 whitespace-nowrap flex-shrink-0">
             {formatDate(msg.date)}
           </span>
-          {msg.unreadCount > 0 && (
+          {(msg.unreadCount ?? 0) > 0 && (
             <span className="ml-2 px-2 py-0.5 text-[10px] font-semibold rounded-full bg-gray-100 text-blue-700">
-              {msg.unreadCount}
+              {msg.unreadCount ?? 0}
             </span>
           )}
 
@@ -137,7 +168,7 @@ export default function EmailListItem({
         <div className="flex items-center gap-2 flex-wrap">
           {/* Category badge */}
           <span
-            className={`px-2 py-1.5 text-[10px] font-medium rounded-2xl ${CATEGORY_BADGE_CLASS[msg.category] || CATEGORY_BADGE_CLASS.General}`}
+            className={`px-2 py-1.5 text-[10px] font-medium rounded-2xl ${CATEGORY_BADGE_CLASS[msg.category || "General"] || CATEGORY_BADGE_CLASS.General}`}
           >
             {msg.category || "General"}
           </span>

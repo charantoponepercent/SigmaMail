@@ -43,6 +43,36 @@ const CLOSING_PHRASES = [
   /have\s+a\s+(great|good)\s+(weekend|day|night)/i
 ];
 
+const INCOMING_FOLLOWUP_PATTERNS = [
+  /\bfollow(?:ing)?\s+up\b/i,
+  /\bcircling\s+back\b/i,
+  /\bjust\s+checking\s+in\b/i,
+  /\bgentle\s+reminder\b/i,
+  /\breminder\b/i,
+  /\bbumping\s+this\b/i,
+  /\bpinging\s+you\b/i,
+  /\bany\s+update(?:s)?\b/i,
+  /\bstatus\s+update\b/i,
+];
+
+const INCOMING_ASK_PATTERNS = [
+  /let\s+me\s+know/i,
+  /please\s+(reply|respond|confirm|update|share|revert)/i,
+  /can\s+you/i,
+  /could\s+you/i,
+  /would\s+you/i,
+];
+
+const INCOMING_NOISE_PATTERNS = [
+  /unsubscribe/i,
+  /newsletter/i,
+  /digest/i,
+  /view\s+in\s+browser/i,
+  /manage\s+preferences/i,
+  /no-reply@/i,
+  /noreply@/i,
+];
+
 export function evaluateFollowUp(email, context = {}) {
   const result = {
     isFollowUp: false,
@@ -51,9 +81,25 @@ export function evaluateFollowUp(email, context = {}) {
     confidence: 0,
     matchedSnippet: null, // UI can show: "Waiting on: 'Let me know...'"
     reasoning: [],
+    followUpKind: null, // 'incoming_nudge' | 'waiting_for_reply'
   };
 
   if (!context) return result;
+
+  if (email && isIncomingMessage(email, true)) {
+    const incomingText = `${email.subject || ""}\n${email.text || email.plainText || ""}`;
+    const incomingAnalysis = calculateIncomingFollowUpScore(incomingText);
+    if (incomingAnalysis.score >= 0.6) {
+      result.isFollowUp = true;
+      result.followUpWaitingSince = getMessageTimestamp(email);
+      result.isOverdueFollowUp = false;
+      result.confidence = Number(incomingAnalysis.score.toFixed(2));
+      result.matchedSnippet = incomingAnalysis.snippet;
+      result.reasoning = [...incomingAnalysis.reasons, "incoming_followup_nudge"];
+      result.followUpKind = "incoming_nudge";
+      return result;
+    }
+  }
 
   const lastOutgoing = context.lastOutgoing;
   if (!lastOutgoing) return result;
@@ -85,6 +131,7 @@ export function evaluateFollowUp(email, context = {}) {
     result.confidence = Number(rawScore.toFixed(2));
     result.matchedSnippet = analysis.snippet;
     result.reasoning = analysis.reasons;
+    result.followUpKind = "waiting_for_reply";
   }
 
   if (result.isFollowUp) {
@@ -95,6 +142,47 @@ export function evaluateFollowUp(email, context = {}) {
   }
 
   return result;
+}
+
+function calculateIncomingFollowUpScore(text) {
+  let score = 0;
+  let snippet = null;
+  const reasons = [];
+
+  for (const regex of INCOMING_NOISE_PATTERNS) {
+    if (regex.test(text)) {
+      score -= 0.8;
+      reasons.push("automation_noise");
+      return { score: Math.max(score, 0), snippet: null, reasons };
+    }
+  }
+
+  for (const regex of INCOMING_FOLLOWUP_PATTERNS) {
+    const match = text.match(regex);
+    if (match) {
+      score += 0.55;
+      snippet = match[0];
+      reasons.push("followup_phrase");
+      break;
+    }
+  }
+
+  if (INCOMING_ASK_PATTERNS.some((regex) => regex.test(text))) {
+    score += 0.25;
+    reasons.push("reply_requested");
+  }
+
+  const questionMarks = (text.match(/\?/g) || []).length;
+  if (questionMarks > 0) {
+    score += Math.min(0.2, questionMarks * 0.1);
+    reasons.push("question_mark");
+  }
+
+  return {
+    score: Math.min(Math.max(score, 0), 1),
+    snippet,
+    reasons,
+  };
 }
 
 /**

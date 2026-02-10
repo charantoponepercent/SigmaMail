@@ -30,6 +30,15 @@ export type DashboardMessage = {
   isRead?: boolean;
   priority?: boolean;
   billDue?: boolean;
+  needsReply?: boolean;
+  needsReplyScore?: number;
+  needsReplyReason?: string;
+  hasDeadline?: boolean;
+  deadlineAt?: string;
+  deadlineConfidence?: number;
+  isFollowUp?: boolean;
+  followUpWaitingSince?: string;
+  isOverdueFollowUp?: boolean;
   hidden?: boolean;
   starred?: boolean;
   searchScore?: number;

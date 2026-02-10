@@ -2,8 +2,17 @@
 
 import { useState, useCallback } from "react";
 import { API_BASE } from "@/lib/api";
+import { DashboardThread } from "../types";
 
-export function useThreadLoader({ setSelectedMessage, setSelectedThreadId }) {
+type UseThreadLoaderArgs = {
+  setSelectedMessage: (thread: DashboardThread | null) => void;
+  setSelectedThreadId: (threadId: string | null) => void;
+};
+
+export function useThreadLoader({
+  setSelectedMessage,
+  setSelectedThreadId,
+}: UseThreadLoaderArgs) {
   const [loadingThread, setLoadingThread] = useState(false);
 
   const openMessage = useCallback(async (id: string) => {
@@ -25,12 +34,12 @@ export function useThreadLoader({ setSelectedMessage, setSelectedThreadId }) {
     } finally {
       setLoadingThread(false);
     }
-  }, []);
+  }, [setSelectedMessage, setSelectedThreadId]);
 
   const closeThread = useCallback(() => {
     setSelectedMessage(null);
     setSelectedThreadId(null);
-  }, []);
+  }, [setSelectedMessage, setSelectedThreadId]);
 
   return {
     loadingThread,

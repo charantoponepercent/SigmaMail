@@ -16,12 +16,16 @@ export function evaluateActions(email, thread) {
   const needsReply = evaluateNeedsReply(email, context);
   const deadline = evaluateDeadline(email, context);
   const followUp = evaluateFollowUp(email, context);
+  const shouldSuppressNeedsReply =
+    followUp.isFollowUp && followUp.followUpKind === "incoming_nudge";
 
   return {
     // Needs Reply
-    needsReply: needsReply.needsReply,
-    needsReplyScore: needsReply.needsReplyScore,
-    needsReplyReason: needsReply.needsReplyReason,
+    needsReply: shouldSuppressNeedsReply ? false : needsReply.needsReply,
+    needsReplyScore: shouldSuppressNeedsReply ? 0 : needsReply.needsReplyScore,
+    needsReplyReason: shouldSuppressNeedsReply
+      ? "reclassified_as_followup"
+      : needsReply.needsReplyReason,
 
     // Deadlines
     hasDeadline: deadline.hasDeadline,

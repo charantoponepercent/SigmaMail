@@ -5,13 +5,14 @@ import { isIncomingMessage } from "./actionUtils.js";
 
 // Threshold: How sure do we need to be to flag this? (0.0 - 1.0)
 // 0.6 is usually a good balance for production (catches "tomorrow", filters "born in 1990")
-export const DEADLINE_CONFIDENCE_THRESHOLD = 0.6;
+export const DEADLINE_CONFIDENCE_THRESHOLD = 0.68;
 
 // Triggers: Words appearing BEFORE the date that imply urgency
 const URGENCY_TRIGGERS = [
   "due", "deadline", "submit", "deliver", "return", 
-  "by", "until", "expires", "cutoff", "expect", "finish", 
-  "complete", "send", "target", "eod", "end of day"
+  "until", "expires", "cutoff", "expect", "finish", 
+  "complete", "send", "target", "eod", "end of day",
+  "cob", "close of business", "close", "closes"
 ];
 
 // Noise: Words appearing BEFORE the date that imply history/info (not action)
@@ -23,6 +24,16 @@ const NOISE_TRIGGERS = [
 // Post-Triggers: Words appearing AFTER the date (e.g., "Friday is the deadline")
 const POST_DATE_TRIGGERS = [
   "deadline", "due date", "cutoff"
+];
+
+const DEADLINE_CONTEXT_HINTS =
+  /\b(due|deadline|submit|send|complete|respond|reply|approve|pay|before|until|cob|eod|close of business|required by|by\s+(today|tomorrow|tonight|eod|cob|monday|tuesday|wednesday|thursday|friday|saturday|sunday|\d{1,2}(?::\d{2})?\s*(am|pm)?|\d{1,2}[/-]\d{1,2}))\b/i;
+const AUTOMATION_NOISE_PATTERNS = [
+  /unsubscribe/i,
+  /newsletter/i,
+  /digest/i,
+  /view\s+in\s+browser/i,
+  /manage\s+preferences/i,
 ];
 
 const RELATIVE_FALLBACK_PATTERNS = [
@@ -86,6 +97,13 @@ export function evaluateDeadline(email, context = {}) {
   const subject = email.subject || "";
   const body = email.text || "";
   const fullText = `${subject}\n${body}`; 
+
+  if (
+    AUTOMATION_NOISE_PATTERNS.some((pattern) => pattern.test(fullText)) &&
+    !DEADLINE_CONTEXT_HINTS.test(fullText)
+  ) {
+    return result;
+  }
   
   // Reference date: "Now". 
   const referenceDate = new Date();
@@ -122,11 +140,15 @@ export function evaluateDeadline(email, context = {}) {
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
     if (dateValue < yesterday) continue;
+    const daysAhead =
+      (dateValue.getTime() - referenceDate.getTime()) / (1000 * 60 * 60 * 24);
+    if (daysAhead > 120) continue;
 
 
     // --- SCORING: Context Analysis ---
-    let score = 0.5; // Base probability just for being a date
+    let score = 0.2;
     const reasoning = [];
+    let contextSignalCount = 0;
 
     // A. Look Behind (50 chars before the date)
     const startWindow = Math.max(0, index - 50);
@@ -141,6 +163,7 @@ export function evaluateDeadline(email, context = {}) {
     if (URGENCY_TRIGGERS.some(w => preContext.includes(w))) {
       score += 0.35;
       reasoning.push("urgency_keyword_pre");
+      contextSignalCount += 1;
     }
 
     // CHECK: Strong Phrases (Pre-date)
@@ -148,6 +171,7 @@ export function evaluateDeadline(email, context = {}) {
     if (/due\s(by|on|date)|deadline\sis/.test(preContext)) {
       score += 0.15;
       reasoning.push("strong_phrase");
+      contextSignalCount += 1;
     }
 
     // CHECK: Post-Date Keywords
@@ -155,6 +179,7 @@ export function evaluateDeadline(email, context = {}) {
     if (POST_DATE_TRIGGERS.some(w => postContext.includes(w))) {
       score += 0.30;
       reasoning.push("urgency_keyword_post");
+      contextSignalCount += 1;
     }
 
     // CHECK: Noise Reduction
@@ -162,6 +187,15 @@ export function evaluateDeadline(email, context = {}) {
     if (NOISE_TRIGGERS.some(w => preContext.includes(w))) {
       score -= 0.45;
       reasoning.push("noise_detected");
+    }
+
+    if (contextSignalCount === 0) {
+      const contextBlob = `${preContext} ${matchText.toLowerCase()} ${postContext}`;
+      if (!DEADLINE_CONTEXT_HINTS.test(contextBlob)) {
+        continue;
+      }
+      score -= 0.1;
+      reasoning.push("weak_deadline_context");
     }
 
     // CHECK: Subject Line Bonus
@@ -183,7 +217,7 @@ export function evaluateDeadline(email, context = {}) {
     }
 
     // Cap score at 0.99
-    score = Math.min(score, 0.99);
+    score = Math.min(Math.max(score, 0), 0.99);
 
     // --- SELECTION: Pick the winner ---
     if (score > maxScore) {

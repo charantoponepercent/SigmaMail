@@ -11,8 +11,8 @@ type Props = {
   selectedThreadId: string | null;
   openMessage: (id: string) => void;
 
-  cleanSubject: (s: string) => string;
-  getAvatarInitial: (from: string) => string;
+  cleanSubject: (s?: string) => string;
+  getAvatarInitial: (from?: string) => string;
   formatDate: (date?: string) => string;
 
   selectedAccount: string | null;

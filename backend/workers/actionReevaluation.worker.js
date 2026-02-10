@@ -1,9 +1,59 @@
 import "dotenv/config";
 import "../config/db.js";
 import Email from "../models/Email.js";
+import EmailAccount from "../models/EmailAccount.js";
 import { evaluateActions } from "../actions/index.js";
 
 console.log("🚀 ActionReevaluation.worker loaded");
+
+const ACTION_LOOKBACK_DAYS = Number(process.env.ACTION_REEVAL_LOOKBACK_DAYS || 21);
+const STALE_HOURS = Number(process.env.ACTION_REEVAL_STALE_HOURS || 6);
+const accountEmailCache = new Map();
+
+function buildEvalMessage(email) {
+  return {
+    ...email,
+    id: email._id?.toString?.() || email.messageId,
+    text: email.textBody || email.snippet || "",
+    subject: email.subject || "",
+  };
+}
+
+function extractEmail(value = "") {
+  const angle = value.match(/<([^>]+)>/);
+  if (angle?.[1]) return angle[1].trim().toLowerCase();
+  const plain = value.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[A-Za-z]{2,}/);
+  return plain?.[0]?.toLowerCase() || "";
+}
+
+async function getUserAccountEmailSet(userId) {
+  const key = String(userId || "");
+  if (accountEmailCache.has(key)) {
+    return accountEmailCache.get(key);
+  }
+  const accounts = await EmailAccount.find({ userId }, { email: 1 }).lean();
+  const set = new Set(
+    (accounts || [])
+      .map((acc) => String(acc?.email || "").toLowerCase().trim())
+      .filter(Boolean)
+  );
+  accountEmailCache.set(key, set);
+  return set;
+}
+
+function inferIncomingFromSender(sender = "", accountEmails = new Set()) {
+  const senderLower = String(sender || "").toLowerCase();
+  const senderEmail = extractEmail(senderLower);
+  if (senderEmail && accountEmails.has(senderEmail)) {
+    return false;
+  }
+  for (const email of accountEmails) {
+    if (email && senderLower.includes(email)) {
+      return false;
+    }
+  }
+  return true;
+}
 
 /**
  * Action Re-evaluation Worker
@@ -19,35 +69,73 @@ console.log("🚀 ActionReevaluation.worker loaded");
 export async function runActionReevaluation() {
   console.log("🔁 Action re-evaluation started");
   const now = new Date();
+  const lookbackStart = new Date(now);
+  lookbackStart.setDate(lookbackStart.getDate() - ACTION_LOOKBACK_DAYS);
+  const staleCutoff = new Date(now.getTime() - STALE_HOURS * 60 * 60 * 1000);
 
-  // Fetch only emails that can change state over time
+  // Re-evaluate recent/stale items so decisions stay fresh even if older emails were never scored.
   const candidates = await Email.find({
     $or: [
+      { date: { $gte: lookbackStart } },
+      { actionLastEvaluatedAt: { $exists: false } },
+      { actionLastEvaluatedAt: { $lte: staleCutoff } },
+      { needsReply: true },
       { hasDeadline: true },
       { isFollowUp: true },
     ],
   })
     .select(
-      "_id userId subject text from to date isIncoming hasDeadline deadlineAt deadlineSource deadlineConfidence isFollowUp followUpWaitingSince"
+      "_id userId threadId messageId subject textBody snippet from to date isIncoming"
     )
+    .sort({ date: -1 })
     .lean();
 
   console.log("📊 Action re-evaluation candidates:", candidates.length);
 
+  const threadCache = new Map();
+  const updates = [];
+
   for (const email of candidates) {
-    console.log("🧠 Re-evaluating email:", email._id.toString());
-    // Minimal thread meta reconstruction
-    const threadMeta = {
-      lastMessageFrom: email.isIncoming ? "other" : "me",
-      lastMessageAt: email.followUpWaitingSince || email.date,
-    };
+    const threadKey = `${String(email.userId)}:${String(email.threadId || email._id)}`;
+    const accountEmails = await getUserAccountEmailSet(email.userId);
 
-    // 1️⃣ Heuristic evaluation (existing logic)
-    const heuristicActionData = evaluateActions(email, threadMeta);
+    let threadMessages = threadCache.get(threadKey);
+    if (!threadMessages) {
+      if (!email.threadId) {
+        const single = buildEvalMessage(email);
+        single.isIncoming = inferIncomingFromSender(single.from, accountEmails);
+        threadMessages = [single];
+      } else {
+        const docs = await Email.find({
+          userId: email.userId,
+          threadId: email.threadId,
+        })
+          .select("_id messageId subject textBody snippet from to date isIncoming")
+          .sort({ date: 1 })
+          .lean();
+        threadMessages = docs.map((doc) => {
+          const normalized = buildEvalMessage(doc);
+          normalized.isIncoming = inferIncomingFromSender(normalized.from, accountEmails);
+          return normalized;
+        });
+      }
+      threadCache.set(threadKey, threadMessages);
+    }
 
-    // 2️⃣ Heuristic-only mode: disable per-email LLM calls to avoid credit burn
+    const normalizedEmail =
+      threadMessages.find((msg) => String(msg._id) === String(email._id)) ||
+      buildEvalMessage(email);
+    normalizedEmail.isIncoming = inferIncomingFromSender(normalizedEmail.from, accountEmails);
+
+    const heuristicActionData = evaluateActions(normalizedEmail, {
+      messages: threadMessages,
+      lastMessageFrom: normalizedEmail.isIncoming ? "them" : "me",
+      lastMessageAt: normalizedEmail.date,
+    });
+
     const finalActionData = {
       ...heuristicActionData,
+      isIncoming: normalizedEmail.isIncoming,
       aiNeedsReply: null,
       aiHasDeadline: null,
       aiIsOverdueFollowUp: null,
@@ -56,16 +144,21 @@ export async function runActionReevaluation() {
       aiEvaluatedAt: null,
     };
 
-    // 3️⃣ Persist
-    await Email.updateOne(
-      { _id: email._id },
-      { $set: finalActionData }
-    );
+    updates.push({
+      updateOne: {
+        filter: { _id: email._id },
+        update: { $set: finalActionData },
+      },
+    });
+  }
+
+  if (updates.length > 0) {
+    await Email.bulkWrite(updates, { ordered: false });
   }
 
   console.log("✅ Action re-evaluation finished");
   return {
-    processed: candidates.length,
+    processed: updates.length,
     ranAt: now,
   };
 }

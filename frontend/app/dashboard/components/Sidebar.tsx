@@ -123,7 +123,7 @@ export default function Sidebar({
             }`}
         >
           <Reply className="w-4 h-4 text-blue-600" />
-          <span className="text-[13.5px] font-medium">Needs Reply</span>
+          <span className="text-[13.5px] font-medium">Needs Reply Today</span>
         </div>
 
         <div
@@ -136,7 +136,7 @@ export default function Sidebar({
             }`}
         >
           <Clock className="w-4 h-4 text-amber-600" />
-          <span className="text-[13.5px] font-medium">Deadlines Today</span>
+          <span className="text-[13.5px] font-medium">Deadline Tagged Today</span>
         </div>
 
         <div
@@ -149,7 +149,7 @@ export default function Sidebar({
             }`}
         >
           <AlertCircle className="w-4 h-4 text-red-600" />
-          <span className="text-[13.5px] font-medium">Overdue Follow‑ups</span>
+          <span className="text-[13.5px] font-medium">Follow-ups Tagged Today</span>
         </div>
       </div>
 

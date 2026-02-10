@@ -154,29 +154,54 @@ router.get('/inbox/today', async (req, res) => {
     end.setHours(23, 59, 59, 999);
 
     // Today's Decisions filtering
-    const { decision } = req.query;
+    const decision = typeof req.query.decision === "string"
+      ? req.query.decision.toUpperCase()
+      : "";
+    const dueOnlyToday = String(req.query.dueOnly || "").toLowerCase() === "true";
+    const overdueOnlyToday = String(req.query.overdueOnly || "").toLowerCase() === "true";
 
-    const baseFilter = {
+    let baseFilter = {
       userId: req.user.id,
       date: { $gte: start, $lte: end },
     };
+    let sortOrder = { date: -1 };
 
     // 🎯 Today’s Decisions filters
     if (decision === "NEEDS_REPLY") {
-      baseFilter.needsReply = true;
+      baseFilter = {
+        userId: req.user.id,
+        needsReply: true,
+        isIncoming: true,
+        date: { $gte: start, $lte: end },
+      };
     }
 
     if (decision === "DEADLINES_TODAY") {
-      baseFilter.hasDeadline = true;
-      baseFilter.deadlineAt = { $gte: start, $lte: end };
+      baseFilter = {
+        userId: req.user.id,
+        hasDeadline: true,
+        date: { $gte: start, $lte: end },
+      };
+      if (dueOnlyToday) {
+        baseFilter.deadlineAt = { $gte: start, $lte: end };
+      }
+      sortOrder = { date: -1, deadlineAt: 1 };
     }
 
     if (decision === "OVERDUE_FOLLOWUPS") {
-      baseFilter.isOverdueFollowUp = true;
+      baseFilter = {
+        userId: req.user.id,
+        isFollowUp: true,
+        date: { $gte: start, $lte: end },
+      };
+      if (overdueOnlyToday) {
+        baseFilter.isOverdueFollowUp = true;
+      }
+      sortOrder = { isOverdueFollowUp: -1, followUpWaitingSince: 1, date: -1 };
     }
 
     const emails = await Email.find(baseFilter)
-      .sort({ date: -1 })
+      .sort(sortOrder)
       .lean();
 
     const threadIds = [...new Set(emails.map(e => e.threadId).filter(Boolean))];
