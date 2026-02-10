@@ -2,6 +2,7 @@ import express from "express";
 import { enqueueGmailPushJob } from "../queues/gmailPush.queue.js";
 
 const router = express.Router();
+const DEBUG_REALTIME = true;
 
 // Pub/Sub pushes JSON
 router.post("/gmail", async (req, res) => {
@@ -13,6 +14,9 @@ router.post("/gmail", async (req, res) => {
 
     const decoded = Buffer.from(msg.data, "base64").toString("utf8");
     const payload = JSON.parse(decoded);
+    if (DEBUG_REALTIME) {
+      console.log("[Realtime] gmail webhook received", payload);
+    }
 
     // payload: { emailAddress, historyId }
     await enqueueGmailPushJob(payload);

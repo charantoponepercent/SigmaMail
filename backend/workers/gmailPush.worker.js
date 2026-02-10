@@ -10,6 +10,7 @@ import Email from "../models/Email.js";
 import Thread from "../models/Thread.js";
 
 const { Worker, Queue } = BullMQ;
+const DEBUG_REALTIME = true;
 
 // QueueScheduler is not required in BullMQ v4+
 const sseQueue = new Queue("sse-events", { connection: redis });
@@ -19,6 +20,12 @@ new Worker(
   "gmail-push",
   async (job) => {
     const { emailAddress, historyId } = job.data;
+    if (DEBUG_REALTIME) {
+      console.log("[Realtime] gmail-push job", {
+        emailAddress,
+        historyId,
+      });
+    }
     const account = await EmailAccount.findOne({ email: emailAddress });
     if (!account) return;
 
@@ -59,6 +66,12 @@ new Worker(
     const histories = historyRes.data.history || [];
     const labelEvents = [];
     const messageIds = new Set();
+    if (DEBUG_REALTIME) {
+      console.log("[Realtime] gmail history fetched", {
+        emailAddress,
+        historyItems: histories.length,
+      });
+    }
 
     for (const h of histories) {
       // New messages
@@ -143,6 +156,13 @@ new Worker(
           isRead,
         },
       });
+      if (DEBUG_REALTIME) {
+        console.log("[Realtime] queued EMAIL_READ_STATE", {
+          userId: String(email.userId),
+          threadId: email.threadId,
+          isRead,
+        });
+      }
     }
 
     for (const messageId of messageIds) {
@@ -165,6 +185,13 @@ new Worker(
         userId: account.userId.toString(),
         data: emailDoc,
       });
+      if (DEBUG_REALTIME) {
+        console.log("[Realtime] queued NEW_EMAIL", {
+          userId: String(account.userId),
+          threadId: emailDoc.threadId,
+          messageId: emailDoc.messageId,
+        });
+      }
     }
 
     // ✅ Advance cursor only AFTER processing

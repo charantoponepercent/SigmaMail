@@ -28,6 +28,14 @@ const router = express.Router();
 
 // Use real JWT-based authentication for all API routes
 router.use(requireAuth);
+const DEBUG_REALTIME = true;
+
+router.use("/inbox", (req, res, next) => {
+  res.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+  res.set("Pragma", "no-cache");
+  res.set("Expires", "0");
+  next();
+});
 
 async function resolveAccountScopeFilter(userId, accountQuery) {
   const accountEmail =
@@ -175,6 +183,12 @@ router.get("/db/thread/:id", async (req, res) => {
 
 router.get('/inbox/today', async (req, res) => {
   try {
+    if (DEBUG_REALTIME) {
+      console.log("[Realtime] /api/inbox/today", {
+        userId: String(req.user.id),
+        query: req.query,
+      });
+    }
     const start = new Date();
     start.setHours(0, 0, 0, 0);
 
@@ -268,6 +282,12 @@ router.get('/inbox/today', async (req, res) => {
 // GET /api/inbox/yesterday -> unified inbox for yesterday
 router.get('/inbox/yesterday', async (req, res) => {
   try {
+    if (DEBUG_REALTIME) {
+      console.log("[Realtime] /api/inbox/yesterday", {
+        userId: String(req.user.id),
+        query: req.query,
+      });
+    }
     const userId = req.user.id;
     const start = new Date();
     start.setDate(start.getDate() - 1);
@@ -315,6 +335,12 @@ router.get('/inbox/yesterday', async (req, res) => {
 // GET /api/inbox/week -> unified inbox for last 7 days (including today)
 router.get('/inbox/week', async (req, res) => {
   try {
+    if (DEBUG_REALTIME) {
+      console.log("[Realtime] /api/inbox/week", {
+        userId: String(req.user.id),
+        query: req.query,
+      });
+    }
     const userId = req.user.id;
     const end = new Date();
     end.setHours(23,59,59,999);
@@ -361,6 +387,12 @@ router.get('/inbox/week', async (req, res) => {
 
 router.get("/inbox/monthly", async (req, res) => {
   try {
+    if (DEBUG_REALTIME) {
+      console.log("[Realtime] /api/inbox/monthly", {
+        userId: String(req.user.id),
+        query: req.query,
+      });
+    }
     const userId = req.user.id;
 
     const end = new Date();

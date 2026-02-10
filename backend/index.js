@@ -16,6 +16,7 @@ import { scheduleActionReevaluation } from "./schedulers/actionReevaluation.sche
 
 
 dotenv.config();
+const DEBUG_REALTIME = true;
 
 const app = express();
 app.set("trust proxy", 1);
@@ -113,6 +114,12 @@ app.get("/api-sse/sse/inbox", (req, res) => {
   res.setHeader("Connection", "keep-alive");
   res.flushHeaders();
 
+  if (DEBUG_REALTIME) {
+    console.log("[Realtime] SSE client connected", {
+      userId: String(userId),
+    });
+  }
+
   const keepAlive = setInterval(() => {
     // SSE comment frame keeps proxies/connections alive.
     res.write(": ping\n\n");
@@ -120,12 +127,23 @@ app.get("/api-sse/sse/inbox", (req, res) => {
 
   const sendEvent = (payload) => {
     if (String(payload.userId) !== String(userId)) return;
+    if (DEBUG_REALTIME) {
+      console.log("[Realtime] SSE deliver", {
+        targetUserId: String(userId),
+        eventType: payload?.type,
+      });
+    }
     res.write(`data: ${JSON.stringify(payload)}\n\n`);
   };
 
   inboxEvents.on("inbox", sendEvent);
 
   req.on("close", () => {
+    if (DEBUG_REALTIME) {
+      console.log("[Realtime] SSE client disconnected", {
+        userId: String(userId),
+      });
+    }
     clearInterval(keepAlive);
     inboxEvents.removeListener("inbox", sendEvent);
   });
@@ -139,6 +157,12 @@ const sseWorker = new Worker(
     if (!rawUserId) return;
 
     const eventType = job?.name || "NEW_EMAIL";
+    if (DEBUG_REALTIME) {
+      console.log("[Realtime] Queue -> SSE", {
+        eventType,
+        userId: String(rawUserId),
+      });
+    }
     inboxEvents.emit("inbox", {
       type: eventType,
       userId: String(rawUserId),

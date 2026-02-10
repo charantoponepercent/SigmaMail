@@ -37,6 +37,7 @@ type OrchestratorStatusItem = {
 };
 export default function Dashboard() {
   const router = useRouter();
+  const DEBUG_REALTIME = true;
 
   // const [labelCounts, setLabelCounts] = useState<any>({});
   const [isSyncing, setIsSyncing] = useState(false);
@@ -165,6 +166,38 @@ export default function Dashboard() {
     loadWeekRef.current = loadWeek;
     loadMonthlyRef.current = loadMonthly;
   }, [loadToday, loadYesterday, loadWeek, loadMonthly]);
+
+  const refreshActiveInbox = useCallback((force = true, reason = "unknown") => {
+    const currentAccount = selectedAccountRef.current;
+    if (!currentAccount) return;
+    if (DEBUG_REALTIME) {
+      console.log("[Realtime] refreshActiveInbox", {
+        reason,
+        force,
+        activeFilter: activeFilterRef.current,
+        account: currentAccount,
+      });
+    }
+
+    if (activeFilterRef.current === "TODAY") {
+      const decisionMap: Record<string, string> = {
+        "__NEEDS_REPLY__": "NEEDS_REPLY",
+        "__DEADLINES_TODAY__": "DEADLINES_TODAY",
+        "__OVERDUE_FOLLOWUPS__": "OVERDUE_FOLLOWUPS",
+      };
+      const decisionType =
+        currentAccount && decisionMap[currentAccount]
+          ? decisionMap[currentAccount]
+          : undefined;
+      loadTodayRef.current(force, decisionType, currentAccount);
+    } else if (activeFilterRef.current === "YESTERDAY") {
+      loadYesterdayRef.current(force, currentAccount);
+    } else if (activeFilterRef.current === "WEEK") {
+      loadWeekRef.current(force, currentAccount);
+    } else if (activeFilterRef.current === "MONTHLY") {
+      loadMonthlyRef.current(force, currentAccount);
+    }
+  }, []);
 
   const { loadingThread, openMessage, closeThread } = useThreadLoader({
     setSelectedMessage,
@@ -312,6 +345,13 @@ export default function Dashboard() {
             ? "EMAIL_READ_STATE"
             : "NEW_EMAIL");
 
+        if (DEBUG_REALTIME) {
+          console.log("[Realtime] SSE message", {
+            eventType,
+            payload,
+          });
+        }
+
         if (eventType === "NEW_EMAIL") {
           setNewMailCount((c) => c + 1);
           setShowNewTag(true);
@@ -324,26 +364,7 @@ export default function Dashboard() {
             setNewMailCount(0);
           }, 2 * 60 * 1000); // 2 minutes
 
-          // 🔥 CRITICAL FIX: force fresh fetch, do NOT rely on old closures
-          const currentAccount = selectedAccountRef.current;
-          if (activeFilterRef.current === "TODAY") {
-            const decisionMap: Record<string, string> = {
-              "__NEEDS_REPLY__": "NEEDS_REPLY",
-              "__DEADLINES_TODAY__": "DEADLINES_TODAY",
-              "__OVERDUE_FOLLOWUPS__": "OVERDUE_FOLLOWUPS",
-            };
-            const decisionType =
-              currentAccount && decisionMap[currentAccount]
-                ? decisionMap[currentAccount]
-                : undefined;
-            loadTodayRef.current(true, decisionType, currentAccount);
-          } else if (activeFilterRef.current === "YESTERDAY") {
-            loadYesterdayRef.current(true, currentAccount);
-          } else if (activeFilterRef.current === "WEEK") {
-            loadWeekRef.current(true, currentAccount);
-          } else if (activeFilterRef.current === "MONTHLY") {
-            loadMonthlyRef.current(true, currentAccount);
-          }
+          refreshActiveInbox(true, "sse:new-email");
         }
 
         if (eventType === "EMAIL_READ_STATE") {
@@ -371,11 +392,17 @@ export default function Dashboard() {
         console.error("SSE inbox stream error:", err);
       };
 
+      es.onopen = () => {
+        if (DEBUG_REALTIME) {
+          console.log("[Realtime] SSE connected");
+        }
+      };
+
       sseRef.current = es;
     }
     loadAccounts(token);
     loadOrchestratorStatus();
-  }, [router, loadAccounts, loadOrchestratorStatus]);
+  }, [router, loadAccounts, loadOrchestratorStatus, refreshActiveInbox]);
 
   // Helper: Is selectedAccount a special Today’s Decisions filter?
   function isDecisionFilter(account: string | null) {

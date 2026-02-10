@@ -4,6 +4,8 @@
 import { useCallback } from "react";
 import { API_BASE } from "@/lib/api";
 
+const DEBUG_REALTIME = true;
+
 export function useInboxLoader({
   setMessages,
   setSourceMessages,
@@ -26,6 +28,17 @@ export function useInboxLoader({
   const buildQueryString = (parts: string[]) => {
     const q = parts.filter(Boolean).join("&");
     return q ? `?${q}` : "";
+  };
+
+  const withCacheBuster = (query: string, force: boolean) => {
+    const params = new URLSearchParams(
+      query.startsWith("?") ? query.slice(1) : query
+    );
+    if (force) {
+      params.set("_ts", String(Date.now()));
+    }
+    const qs = params.toString();
+    return qs ? `?${qs}` : "";
   };
 
   // Helper to process inbox responses (group by thread)
@@ -69,7 +82,18 @@ export function useInboxLoader({
 
       try {
         const token = localStorage.getItem("token");
-        const res = await fetch(`${API_BASE}/api/inbox/${endpoint}${query}`, {
+        const fullQuery = withCacheBuster(query, force);
+        const url = `${API_BASE}/api/inbox/${endpoint}${fullQuery}`;
+        if (DEBUG_REALTIME) {
+          console.log("[InboxLoader] fetching", {
+            endpoint,
+            force,
+            url,
+            activeCategory,
+          });
+        }
+        const res = await fetch(url, {
+          cache: "no-store",
           headers: { Authorization: `Bearer ${token}` },
         });
 
@@ -77,6 +101,16 @@ export function useInboxLoader({
         const emails = Array.isArray(data.emails) ? data.emails : [];
 
         const grouped = processEmails(emails);
+        if (DEBUG_REALTIME) {
+          const first = (grouped[0] || {}) as any;
+          console.log("[InboxLoader] response", {
+            endpoint,
+            count: emails.length,
+            groupedCount: grouped.length,
+            topDate: first.date || null,
+            topId: first.threadId || first._id || first.id || null,
+          });
+        }
 
         if (force) {
           setSourceMessages(grouped);
