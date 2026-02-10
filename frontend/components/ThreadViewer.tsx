@@ -2,13 +2,25 @@
 /* eslint-disable @next/next/no-img-element */
 "use client";
 
-import React from "react";
-import { X, ChevronLeft, ChevronRight, ChevronDown, ChevronRight as ChevronRightIcon, Check, Lock } from "lucide-react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import {
+  X,
+  ChevronLeft,
+  ChevronRight,
+  ChevronDown,
+  ChevronRight as ChevronRightIcon,
+  Check,
+  Lock,
+  Paperclip,
+  ImageIcon,
+  FileText,
+  FileSpreadsheet,
+  File,
+} from "lucide-react";
 import { format } from "date-fns";
 import SecureEmailViewer from "@/components/SecureEmailViewer";
 import extractQuotedSections from "@/lib/extractQuotedSections";
 import AttachmentPreviewModal from "@/components/AttachmentPreviewModal";
-import { useEffect, useState } from "react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -122,6 +134,9 @@ export default function ThreadViewer({ thread, onClose, onPrev, onNext, onCatego
   const [activeTab, setActiveTab] = useState<"images" | "docs" | "others">("images");
   const [savingCategory, setSavingCategory] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [detailsPosition, setDetailsPosition] = useState({ top: 0, left: 0 });
+  const detailsButtonRef = useRef<HTMLButtonElement | null>(null);
+  const detailsPanelRef = useRef<HTMLDivElement | null>(null);
   const toggleMessage = (index: number) => {
     setOpenMessage(prev => (prev === index ? null : index));
   };
@@ -186,7 +201,7 @@ export default function ThreadViewer({ thread, onClose, onPrev, onNext, onCatego
   const sorted = [...thread.messages].sort(
     (a, b) => (a.date ? new Date(a.date).getTime() : 0) - (b.date ? new Date(b.date).getTime() : 0)
   );
-  const enableCollapse = sorted.length > 2;
+  const enableCollapse = sorted.length > 1;
   const latestMessage = sorted[sorted.length - 1];
   const latestMessageId = latestMessage?._id || latestMessage?.id || latestMessage?.messageId;
   const threadCategory = latestMessage?.category || "General";
@@ -268,6 +283,131 @@ export default function ThreadViewer({ thread, onClose, onPrev, onNext, onCatego
     setDetailsOpen(false);
   }, [latestMessageId]);
 
+  useEffect(() => {
+    if (!enableCollapse) {
+      setOpenMessage(null);
+      return;
+    }
+    setOpenMessage(sorted.length - 1);
+  }, [enableCollapse, latestMessageId, sorted.length, thread.threadId]);
+
+  const getPreviewText = (primarySource: string, fallbackSource?: string) => {
+    const raw = primarySource || fallbackSource || "";
+    if (!raw) return "No new message content.";
+
+    const dequoted = extractQuotedSections(raw).clean;
+    const textOnly = dequoted
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<\/(p|div|li|tr|h[1-6])>/gi, "\n")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&nbsp;/gi, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    const normalized = textOnly
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .filter((line) => !/^(from|to|cc|bcc|subject|date|sent):\s/i.test(line))
+      .filter((line) => !/^-{2,}\s*forwarded message\s*-{2,}$/i.test(line))
+      .join(" ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    if (!normalized) return "No new message content.";
+    return normalized.length > 120 ? `${normalized.slice(0, 120)}...` : normalized;
+  };
+
+  const getAttachmentTypeLabel = (filename = "", mimeType = "") => {
+    const fromName = filename.includes(".") ? filename.split(".").pop() : "";
+    if (fromName) return fromName.toUpperCase();
+    const subtype = mimeType.split("/")[1];
+    return (subtype || "FILE").toUpperCase();
+  };
+
+  const getAttachmentIcon = (mimeType = "") => {
+    const mt = mimeType.toLowerCase();
+    if (mt.startsWith("image/")) return <ImageIcon className="h-4 w-4 text-indigo-600" />;
+    if (mt.includes("sheet") || mt.includes("csv") || mt.includes("excel")) {
+      return <FileSpreadsheet className="h-4 w-4 text-emerald-600" />;
+    }
+    if (
+      mt.includes("pdf") ||
+      mt.includes("text") ||
+      mt.includes("word") ||
+      mt.includes("officedocument")
+    ) {
+      return <FileText className="h-4 w-4 text-amber-600" />;
+    }
+    return <File className="h-4 w-4 text-slate-500" />;
+  };
+
+  const calculateDetailsPosition = useCallback(() => {
+    if (typeof window === "undefined" || !detailsButtonRef.current) {
+      return { top: 0, left: 0 };
+    }
+
+    const margin = 12;
+    const popoverWidth = Math.min(380, window.innerWidth - margin * 2);
+    const estimatedHeight = 320;
+    const rect = detailsButtonRef.current.getBoundingClientRect();
+
+    let left = rect.left;
+    if (left + popoverWidth > window.innerWidth - margin) {
+      left = window.innerWidth - popoverWidth - margin;
+    }
+    left = Math.max(margin, left);
+
+    let top = rect.bottom + 10;
+    if (top + estimatedHeight > window.innerHeight - margin) {
+      top = Math.max(margin, rect.top - estimatedHeight - 10);
+    }
+
+    return { top, left };
+  }, []);
+
+  const toggleDetails = () => {
+    if (detailsOpen) {
+      setDetailsOpen(false);
+      return;
+    }
+    setDetailsPosition(calculateDetailsPosition());
+    setDetailsOpen(true);
+  };
+
+  useEffect(() => {
+    if (!detailsOpen) return;
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setDetailsOpen(false);
+    };
+
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (detailsPanelRef.current?.contains(target)) return;
+      if (detailsButtonRef.current?.contains(target)) return;
+      setDetailsOpen(false);
+    };
+
+    const syncPosition = () => {
+      setDetailsPosition(calculateDetailsPosition());
+    };
+
+    window.addEventListener("resize", syncPosition);
+    window.addEventListener("scroll", syncPosition, true);
+    document.addEventListener("mousedown", closeOnOutsideClick);
+    document.addEventListener("keydown", closeOnEscape);
+
+    return () => {
+      window.removeEventListener("resize", syncPosition);
+      window.removeEventListener("scroll", syncPosition, true);
+      document.removeEventListener("mousedown", closeOnOutsideClick);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [calculateDetailsPosition, detailsOpen]);
+
   return (
     <div className="flex flex-col h-full overflow-hidden bg-white">
       {/* SUBJECT BAR */}
@@ -291,8 +431,9 @@ export default function ThreadViewer({ thread, onClose, onPrev, onNext, onCatego
           <button
             type="button"
             onClick={() => setAttachmentsOpen((prev) => !prev)}
-            className="text-md text-gray-700 border border-gray-200 rounded-xl py-3 px-3 hover:bg-gray-100 flex items-center gap-1 transition"
+            className="group inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-white"
           >
+            <Paperclip className="h-4 w-4 text-slate-500 transition group-hover:text-slate-700" />
             <span>Attachments ({threadAttachments.length})</span>
             <ChevronRightIcon
               className={`w-4 h-4 transition-transform duration-200 ${
@@ -351,38 +492,17 @@ export default function ThreadViewer({ thread, onClose, onPrev, onNext, onCatego
             </span>
           ))}
 
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setDetailsOpen((prev) => !prev)}
-              className="text-[12px] text-gray-600 underline underline-offset-2 hover:text-gray-900"
-            >
-              {detailsOpen ? "Hide Details" : "Details"}
-            </button>
-
-            {detailsOpen && (
-              <div className="absolute left-0 top-full mt-2 w-[360px] max-w-[80vw] rounded-xl border border-gray-200 bg-white shadow-lg z-50">
-                <div className="px-3 py-2 border-b border-gray-100 text-[11px] uppercase tracking-[0.18em] text-gray-400">
-                  Details
-                </div>
-                <div className="max-h-64 overflow-y-auto px-3 py-3 text-[12px]">
-                  <div className="grid grid-cols-[90px_1fr] gap-y-2">
-                    {detailsRows.map((row) => (
-                      <React.Fragment key={row.label}>
-                        <p className="text-gray-500 font-medium">{row.label}:</p>
-                        <p className="text-gray-800 break-all">{row.value}</p>
-                      </React.Fragment>
-                    ))}
-                    <p className="text-gray-500 font-medium">Security:</p>
-                    <p className="text-gray-800 inline-flex items-center gap-2">
-                      <Lock className="h-3.5 w-3.5 text-emerald-600" />
-                      {latestMessage?.security || "—"}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
+          <button
+            ref={detailsButtonRef}
+            type="button"
+            onClick={toggleDetails}
+            className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-[11px] font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+            aria-expanded={detailsOpen}
+            aria-label={detailsOpen ? "Hide message details" : "Show message details"}
+          >
+            Details
+            <ChevronDown className={`h-3.5 w-3.5 transition-transform ${detailsOpen ? "rotate-180" : ""}`} />
+          </button>
 
           {latestMessageId && (
             <DropdownMenu>
@@ -424,18 +544,29 @@ export default function ThreadViewer({ thread, onClose, onPrev, onNext, onCatego
 
       {/* THREAD-LEVEL ATTACHMENTS BAR (collapsible, grouped) */}
       {hasThreadAttachments && (
-        <div className="border-b border-gray-200 p-1 rounded-xlml bg-gray-50">
+        <div className="border-b border-slate-200 bg-white px-4 pb-4 pt-2">
           {attachmentsOpen && (
-            <div className="px-4 pb-3 pt-1">
-              {/* Tabs: Images / Docs / Others */}
-              <div className="flex items-center gap-2 mb-2 text-[11px]">
+            <div className="rounded-2xl border border-slate-200 bg-gradient-to-b from-slate-50 to-white p-4 shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-sm font-semibold text-slate-800">Thread Attachments</p>
+                  <p className="text-xs text-slate-500">
+                    {visibleAttachments.length} shown from {threadAttachments.length} total
+                  </p>
+                </div>
+                <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-600">
+                  {activeTab === "images" ? "Image files" : activeTab === "docs" ? "Documents" : "Other files"}
+                </span>
+              </div>
+
+              <div className="mt-3 inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 text-[11px]">
                 <button
                   type="button"
                   onClick={() => setActiveTab("images")}
-                  className={`px-2 py-1 rounded-full border text-xs transition-colors ${
+                  className={`rounded-lg px-2.5 py-1.5 text-xs transition-colors ${
                     activeTab === "images"
-                      ? "bg-white border-gray-300 text-gray-900"
-                      : "bg-gray-100 border-transparent text-gray-500 hover:bg-gray-200"
+                      ? "bg-slate-100 text-slate-900"
+                      : "text-slate-500 hover:bg-slate-50"
                   }`}
                 >
                   Images ({imageAttachments.length})
@@ -443,10 +574,10 @@ export default function ThreadViewer({ thread, onClose, onPrev, onNext, onCatego
                 <button
                   type="button"
                   onClick={() => setActiveTab("docs")}
-                  className={`px-2 py-1 rounded-full border text-xs transition-colors ${
+                  className={`rounded-lg px-2.5 py-1.5 text-xs transition-colors ${
                     activeTab === "docs"
-                      ? "bg-white border-gray-300 text-gray-900"
-                      : "bg-gray-100 border-transparent text-gray-500 hover:bg-gray-200"
+                      ? "bg-slate-100 text-slate-900"
+                      : "text-slate-500 hover:bg-slate-50"
                   }`}
                 >
                   Docs ({docAttachments.length})
@@ -454,29 +585,29 @@ export default function ThreadViewer({ thread, onClose, onPrev, onNext, onCatego
                 <button
                   type="button"
                   onClick={() => setActiveTab("others")}
-                  className={`px-2 py-1 rounded-full border text-xs transition-colors ${
+                  className={`rounded-lg px-2.5 py-1.5 text-xs transition-colors ${
                     activeTab === "others"
-                      ? "bg-white border-gray-300 text-gray-900"
-                      : "bg-gray-100 border-transparent text-gray-500 hover:bg-gray-200"
+                      ? "bg-slate-100 text-slate-900"
+                      : "text-slate-500 hover:bg-slate-50"
                   }`}
                 >
                   Others ({otherAttachments.length})
                 </button>
               </div>
 
-              {/* Horizontal scroll attachments list */}
-              <div className="flex flex-nowrap gap-4 overflow-x-auto pb-1">
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 {visibleAttachments.length === 0 ? (
-                  <p className="text-[11px] text-gray-400 py-2">
-                    No files in this category.
-                  </p>
+                  <div className="col-span-full rounded-xl border border-dashed border-slate-300 bg-white/70 px-4 py-6 text-center">
+                    <p className="text-sm font-medium text-slate-700">No files in this bucket</p>
+                    <p className="mt-1 text-xs text-slate-500">Switch tabs to view other attachment types.</p>
+                  </div>
                 ) : (
                   visibleAttachments.map((att, idx) => {
                     const isImage = att.mimeType?.startsWith("image/");
                     return (
                       <div
                         key={idx}
-                        className="min-w-[160px] max-w-[180px] bg-white border border-gray-200 rounded-md shadow-sm cursor-pointer hover:shadow-md transition-shadow flex-shrink-0"
+                        className="group cursor-pointer rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md"
                         onClick={() =>
                           setPreview({
                             filename: att.filename,
@@ -485,31 +616,41 @@ export default function ThreadViewer({ thread, onClose, onPrev, onNext, onCatego
                           })
                         }
                       >
-                        {isImage ? (
-                          <img
-                            src={att.storageUrl}
-                            alt={att.filename}
-                            className="w-full h-28 object-cover rounded-t-md bg-gray-100"
-                          />
-                        ) : (
-                          <div className="w-full h-28 flex items-center justify-center bg-gray-100 rounded-t-md text-xs text-gray-600">
-                              {att.mimeType?.split("/")[1]?.toUpperCase() || "FILE"}
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex min-w-0 items-center gap-3">
+                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-slate-50">
+                              {isImage && att.storageUrl ? (
+                                <img
+                                  src={att.storageUrl}
+                                  alt={att.filename}
+                                  className="h-8 w-8 rounded-md object-cover"
+                                />
+                              ) : (
+                                getAttachmentIcon(att.mimeType)
+                              )}
                             </div>
-                        )}
-                        <div className="px-2 py-2">
-                          <div className="flex items-center justify-between gap-1">
-                            <p className="text-[11px] font-medium text-gray-800 truncate">
-                              {att.filename}
-                            </p>
-                            {att.isExternal && (
-                              <span className="ml-1 text-[10px] text-blue-500 whitespace-nowrap">
-                                &#x2601;&#x20dd;
-                              </span>
-                            )}
+                            <div className="min-w-0">
+                              <p className="truncate text-[13px] font-semibold text-slate-800">
+                                {att.filename}
+                              </p>
+                              <p className="truncate text-[11px] text-slate-500">
+                                {att.mimeType || "Unknown format"}
+                              </p>
+                            </div>
                           </div>
-                          <p className="text-[10px] text-gray-400 truncate">
-                            {att.mimeType || "Unknown"}
-                          </p>
+                          <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+                            {getAttachmentTypeLabel(att.filename, att.mimeType)}
+                          </span>
+                        </div>
+                        <div className="mt-3 flex items-center justify-between">
+                          <span className="text-[11px] font-medium text-blue-600 group-hover:text-blue-700">
+                            Open preview
+                          </span>
+                          {att.isExternal && (
+                            <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-700">
+                              Cloud
+                            </span>
+                          )}
                         </div>
                       </div>
                     );
@@ -523,132 +664,162 @@ export default function ThreadViewer({ thread, onClose, onPrev, onNext, onCatego
 
 
       {/* BODY */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden">
-        <div className="max-w-3xl mx-auto py-6 space-y-12 w-full">
-          {sorted.map((msg, idx) => {
-            // Deduplicate attachments for this message
-            const uniqueMsgAttachments = Array.from(
-              new Map(
-                (msg.attachments || []).map(a => [
-                  (a.storageUrl || "") + "-" + (a.filename || ""),
-                  a
-                ])
-              ).values()
-            );
-            msg.attachments = uniqueMsgAttachments;
+      <div className="flex-1 overflow-y-auto overflow-x-hidden bg-gradient-to-b from-slate-50/60 via-white to-white">
+        <div className="mx-auto w-full max-w-4xl px-4 py-6">
+          <div className="relative space-y-4">
+            {enableCollapse && (
+              <div className="pointer-events-none absolute left-[19px] top-3 bottom-3 w-px bg-gradient-to-b from-slate-200 via-slate-300 to-slate-200" />
+            )}
+            {sorted.map((msg, idx) => {
+              const body =
+                msg.body ||
+                msg.htmlBodyProcessed ||
+                msg.htmlBodyRaw ||
+                (msg.textBody ? `<pre>${msg.textBody}</pre>` : "");
 
-            const body =
-              msg.body ||
-              msg.htmlBodyProcessed ||
-              msg.htmlBodyRaw ||
-              (msg.textBody ? `<pre>${msg.textBody}</pre>` : "");
+              const { clean } = extractQuotedSections(body);
+              const isOpen = !enableCollapse || openMessage === idx;
+              const isLatest = idx === sorted.length - 1;
+              const senderName = msg.from?.split("<")[0]?.trim() || "Unknown";
+              const receiverName = msg.to?.split("<")[0]?.trim() || "You";
+              const previewText = getPreviewText(clean, msg.textBody || msg.body);
 
-            const { clean } = extractQuotedSections(body);
-
-            return (
-              <div key={msg._id || msg.messageId || idx}>
-                <div
-                  className="flex items-start justify-between pb-6 mb-2 cursor-pointer transition-colors duration-200 hover:bg-gray-50 rounded-lg"
-                  onClick={enableCollapse ? () => toggleMessage(idx) : undefined}
+              return (
+                <article
+                  key={msg._id || msg.messageId || idx}
+                  className={`relative ${enableCollapse ? "pl-11" : ""}`}
                 >
-                  <div className="flex gap-4 min-w-0">
-                    <div className="w-11 h-11 rounded-full border border-gray-400 shadow-sm text-black flex text-md items-center justify-center">
-                      {getAvatarInitial(msg.from)}
-                    </div>
-
-                    <div className="min-w-0">
-                      <p className="text-base text-[15px] font-semibold text-gray-900 truncate">
-                        {msg.from?.split("<")[0]?.trim() || "Unknown"}
-                      </p>
-                      <p className="text-[13px] text-gray-500 truncate">
-                        To: {msg.to?.split("<")[0]?.trim() || "You"}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3 ml-6">
-                    {enableCollapse && (
-                      <div
-                        className="flex flex-col items-center justify-center w-3 cursor-pointer select-none transition-transform duration-200"
-                        onClick={() => toggleMessage(idx)}
-                      >
-                        {openMessage !== idx ? (
-                          <div className="flex flex-col items-center gap-[2px] transition-all duration-200 group-hover:scale-110">
-                            <span className="w-1 h-1 bg-gray-400 rounded-full"></span>
-                            <span className="w-1 h-1 bg-gray-400 rounded-full"></span>
+                  {enableCollapse && (
+                    <span
+                      className={`absolute left-[10px] top-6 h-[14px] w-[14px] rounded-full border-2 transition-all ${
+                        isOpen
+                          ? "border-blue-500 bg-blue-500 shadow-[0_0_0_4px_rgba(59,130,246,0.16)]"
+                          : "border-slate-300 bg-white"
+                      }`}
+                    />
+                  )}
+                  <div
+                    className={`overflow-hidden rounded-2xl border transition-all duration-300 ${
+                      isOpen
+                        ? "border-slate-300 bg-white shadow-[0_12px_30px_rgba(15,23,42,0.1)]"
+                        : "border-slate-200/80 bg-slate-50/90 hover:border-slate-300 hover:bg-white"
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      className="w-full px-4 py-3.5 text-left sm:px-5 sm:py-4"
+                      onClick={enableCollapse ? () => toggleMessage(idx) : undefined}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex min-w-0 items-start gap-3">
+                          <div
+                            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full border text-sm font-semibold transition-colors ${
+                              isOpen
+                                ? "border-blue-200 bg-blue-50 text-blue-700"
+                                : "border-slate-300 bg-white text-slate-700"
+                            }`}
+                          >
+                            {getAvatarInitial(msg.from)}
                           </div>
-                        ) : (
-                          <div className="w-2 h-[2px] bg-gray-500 rounded-full transition-all duration-200 group-hover:scale-110"></div>
-                        )}
+
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="truncate text-[18px] font-semibold leading-tight text-slate-900">
+                                {senderName}
+                              </p>
+                              {isLatest && (
+                                <span className="inline-flex items-center rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-violet-700">
+                                  Latest
+                                </span>
+                              )}
+                            </div>
+                            <p className="mt-0.5 truncate text-[13px] text-slate-500">
+                              To: {receiverName}
+                            </p>
+                            {enableCollapse && !isOpen && (
+                              <p className="mt-2 text-[13px] leading-5 text-slate-600">
+                                {previewText}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex shrink-0 items-center gap-2">
+                          <span className="whitespace-nowrap text-[13px] font-medium text-slate-500">
+                            {msg.date ? format(new Date(msg.date), "PPp") : ""}
+                          </span>
+                          {enableCollapse && (
+                            <ChevronDown
+                              className={`h-4 w-4 transition-transform ${
+                                isOpen ? "rotate-180 text-slate-700" : "text-slate-400"
+                              }`}
+                            />
+                          )}
+                        </div>
+                      </div>
+                    </button>
+
+                    {isOpen && (
+                      <div className="border-t border-slate-100 px-5 py-5 sm:px-7 sm:py-6">
+                        <div className="rounded-xl border border-slate-100 bg-white p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] sm:p-5">
+                          <SecureEmailViewer
+                            html={clean}
+                            senderEmail={msg.from || ""}
+                            messageId={msg.id || ""}
+                            accountEmail={accountEmail}
+                          />
+                        </div>
                       </div>
                     )}
-
-                    <span className="text-sm text-gray-500 whitespace-nowrap">
-                      {msg.date ? format(new Date(msg.date), "PPpp") : ""}
-                    </span>
                   </div>
-                </div>
-
-                {(!enableCollapse || openMessage === idx) && (
-                  <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden transition-all duration-300 ease-out">
-                    <div className="px-8 py-8 w-full overflow-x-hidden transition-opacity duration-300 opacity-100">
-                      <div className="prose max-w-none w-full">
-                        {msg.attachments && msg.attachments.length > 0 && (
-                          <div className="mb-6 flex flex-wrap gap-4">
-                            {Array.from(new Map(
-                              (msg.attachments || []).map(a => [(a.storageUrl || a.filename), a])
-                            ).values()).map((att, i) => {
-                              const isImage = att.mimeType?.startsWith("image/");
-                              return (
-                                <div
-                                  key={i}
-                                  className="border rounded-lg p-3 bg-gray-50 w-40 shadow-sm hover:shadow cursor-pointer"
-                                  onClick={() => setPreview(att)}
-                                >
-                                  {isImage ? (
-                                    <img
-                                      src={
-                                        att.storageUrl ||
-                                        `/api/gmail/attachment/${msg.id}/${encodeURIComponent(att.filename)}?account=${accountEmail}`
-                                      }
-                                      alt={att.filename}
-                                      className="w-full h-28 object-cover rounded-md"
-                                    />
-                                  ) : (
-                                    <div className="w-full h-28 flex items-center justify-center bg-white rounded-md border text-sm text-gray-500">
-                                      {att.mimeType?.split("/")[1]?.toUpperCase() || "FILE"}
-                                    </div>
-                                  )}
-                                  <p className="text-xs mt-2 font-medium text-gray-800 truncate">
-                                    {att.filename}
-                                  </p>
-                                  {att.isExternal && (
-                                    <p className="text-[10px] text-blue-500 mt-0.5">Cloud link</p>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-
-                        <SecureEmailViewer
-                          html={clean}
-                          senderEmail={msg.from || ""}
-                          messageId={msg.id || ""}
-                          accountEmail={accountEmail}
-                          attachments={msg.attachments}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
+                </article>
+              );
+            })}
+          </div>
         </div>
       </div>
       {preview && (
         <AttachmentPreviewModal file={preview} onClose={() => setPreview(null)} />
+      )}
+      {detailsOpen && (
+        <div className="fixed inset-0 z-[70] bg-transparent pointer-events-none">
+          <div
+            ref={detailsPanelRef}
+            style={{
+              top: detailsPosition.top,
+              left: detailsPosition.left,
+              width: "min(380px, calc(100vw - 24px))",
+            }}
+            className="pointer-events-auto absolute rounded-2xl border border-slate-200 bg-white/95 shadow-[0_16px_48px_rgba(15,23,42,0.16)] backdrop-blur-sm"
+          >
+            <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2.5">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Message Details</p>
+              <button
+                type="button"
+                onClick={() => setDetailsOpen(false)}
+                className="rounded-full p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+                aria-label="Close message details"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+            <div className="max-h-[62vh] overflow-y-auto px-4 py-3 text-[12px]">
+              <div className="grid grid-cols-[95px_1fr] gap-y-2.5">
+                {detailsRows.map((row) => (
+                  <React.Fragment key={row.label}>
+                    <p className="text-slate-500 font-medium">{row.label}:</p>
+                    <p className="text-slate-800 break-all">{row.value}</p>
+                  </React.Fragment>
+                ))}
+                <p className="text-slate-500 font-medium">Security:</p>
+                <p className="text-slate-800 inline-flex items-center gap-2">
+                  <Lock className="h-3.5 w-3.5 text-emerald-600" />
+                  {latestMessage?.security || "—"}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
