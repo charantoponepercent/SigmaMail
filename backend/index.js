@@ -113,14 +113,20 @@ app.get("/api-sse/sse/inbox", (req, res) => {
   res.setHeader("Connection", "keep-alive");
   res.flushHeaders();
 
+  const keepAlive = setInterval(() => {
+    // SSE comment frame keeps proxies/connections alive.
+    res.write(": ping\n\n");
+  }, 25000);
+
   const sendEvent = (payload) => {
-    if (payload.userId !== userId) return;
+    if (String(payload.userId) !== String(userId)) return;
     res.write(`data: ${JSON.stringify(payload)}\n\n`);
   };
 
   inboxEvents.on("inbox", sendEvent);
 
   req.on("close", () => {
+    clearInterval(keepAlive);
     inboxEvents.removeListener("inbox", sendEvent);
   });
 });
@@ -129,13 +135,15 @@ app.get("/api-sse/sse/inbox", (req, res) => {
 const sseWorker = new Worker(
   "sse-events",
   async (job) => {
-    inboxEvents.emit("inbox", {
-      type: "NEW_EMAIL",          // 🔴 FIX: explicit event type
-      userId: job.data.userId,
-      data: job.data.data || null,
-    });
+    const rawUserId = job?.data?.userId;
+    if (!rawUserId) return;
 
-    // console.log("📡 SSE emitted → NEW_EMAIL for user:", job.data.userId);
+    const eventType = job?.name || "NEW_EMAIL";
+    inboxEvents.emit("inbox", {
+      type: eventType,
+      userId: String(rawUserId),
+      data: job?.data?.data || null,
+    });
   },
   { connection: redis }
 );

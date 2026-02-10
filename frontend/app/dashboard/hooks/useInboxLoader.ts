@@ -15,6 +15,18 @@ export function useInboxLoader({
   setLoadingMessages: (loading: boolean) => void;
   activeCategory: string;
 }) {
+  const shouldScopeToAccount = (selectedAccount?: string | null) => {
+    const normalized = (selectedAccount || "").trim();
+    if (!normalized) return false;
+    if (normalized.toUpperCase() === "ALL") return false;
+    if (normalized.startsWith("__")) return false;
+    return true;
+  };
+
+  const buildQueryString = (parts: string[]) => {
+    const q = parts.filter(Boolean).join("&");
+    return q ? `?${q}` : "";
+  };
 
   // Helper to process inbox responses (group by thread)
   const processEmails = useCallback(
@@ -106,24 +118,40 @@ export function useInboxLoader({
     decisionType?: string,
     selectedAccount?: string | null
   ) => {
-    void selectedAccount;
-    const query = decisionType
-      ? `?decision=${decisionType}&scope=today`
-      : "";
+    const parts: string[] = [];
+    if (decisionType) {
+      parts.push(`decision=${encodeURIComponent(decisionType)}`);
+      parts.push("scope=today");
+    }
+    if (shouldScopeToAccount(selectedAccount)) {
+      parts.push(`account=${encodeURIComponent((selectedAccount || "").trim())}`);
+    }
+    const query = buildQueryString(parts);
     return loadInbox("today", force, query);
   };
+
   const loadYesterday = (force = false, selectedAccount?: string | null) => {
-    void selectedAccount;
-    return loadInbox("yesterday", force);
+    const parts: string[] = [];
+    if (shouldScopeToAccount(selectedAccount)) {
+      parts.push(`account=${encodeURIComponent((selectedAccount || "").trim())}`);
+    }
+    return loadInbox("yesterday", force, buildQueryString(parts));
   };
+
   const loadWeek = (force = false, selectedAccount?: string | null) => {
-    void selectedAccount;
-    return loadInbox("week", force);
+    const parts: string[] = [];
+    if (shouldScopeToAccount(selectedAccount)) {
+      parts.push(`account=${encodeURIComponent((selectedAccount || "").trim())}`);
+    }
+    return loadInbox("week", force, buildQueryString(parts));
   };
 
   const loadMonthly = (force = false, selectedAccount?: string | null) => {
-    void selectedAccount;
-    return loadInbox("monthly?limitSenders=8&lookbackDays=30", force);
+    const parts = ["limitSenders=8", "lookbackDays=30"];
+    if (shouldScopeToAccount(selectedAccount)) {
+      parts.push(`account=${encodeURIComponent((selectedAccount || "").trim())}`);
+    }
+    return loadInbox("monthly", force, buildQueryString(parts));
   };
 
   return {

@@ -29,6 +29,31 @@ const router = express.Router();
 // Use real JWT-based authentication for all API routes
 router.use(requireAuth);
 
+async function resolveAccountScopeFilter(userId, accountQuery) {
+  const accountEmail =
+    typeof accountQuery === "string" ? accountQuery.trim() : "";
+
+  if (!accountEmail || accountEmail.toUpperCase() === "ALL") {
+    return { empty: false, filter: {} };
+  }
+
+  const account = await EmailAccount.findOne({
+    userId,
+    email: accountEmail,
+  })
+    .select("_id")
+    .lean();
+
+  if (!account?._id) {
+    return { empty: true, filter: {} };
+  }
+
+  return {
+    empty: false,
+    filter: { accountId: account._id },
+  };
+}
+
 // -----------------------------------------------------------
 // GET /api/accounts → List all connected Gmail accounts for this user
 // -----------------------------------------------------------
@@ -162,9 +187,18 @@ router.get('/inbox/today', async (req, res) => {
       : "";
     const dueOnlyToday = String(req.query.dueOnly || "").toLowerCase() === "true";
     const overdueOnlyToday = String(req.query.overdueOnly || "").toLowerCase() === "true";
+    const accountScope = await resolveAccountScopeFilter(
+      req.user.id,
+      req.query.account
+    );
+    if (accountScope.empty) {
+      return res.json({ emails: [] });
+    }
+    const accountFilter = accountScope.filter;
 
     let baseFilter = {
       userId: req.user.id,
+      ...accountFilter,
       date: { $gte: start, $lte: end },
     };
     let sortOrder = { date: -1 };
@@ -173,6 +207,7 @@ router.get('/inbox/today', async (req, res) => {
     if (decision === "NEEDS_REPLY") {
       baseFilter = {
         userId: req.user.id,
+        ...accountFilter,
         needsReply: true,
         isIncoming: true,
         date: { $gte: start, $lte: end },
@@ -182,6 +217,7 @@ router.get('/inbox/today', async (req, res) => {
     if (decision === "DEADLINES_TODAY") {
       baseFilter = {
         userId: req.user.id,
+        ...accountFilter,
         hasDeadline: true,
         date: { $gte: start, $lte: end },
       };
@@ -194,6 +230,7 @@ router.get('/inbox/today', async (req, res) => {
     if (decision === "OVERDUE_FOLLOWUPS") {
       baseFilter = {
         userId: req.user.id,
+        ...accountFilter,
         isFollowUp: true,
         date: { $gte: start, $lte: end },
       };
@@ -240,8 +277,17 @@ router.get('/inbox/yesterday', async (req, res) => {
     end.setDate(end.getDate() - 1);
     end.setHours(23,59,59,999);
 
+    const accountScope = await resolveAccountScopeFilter(
+      userId,
+      req.query.account
+    );
+    if (accountScope.empty) {
+      return res.json({ emails: [] });
+    }
+
     const emails = await Email.find({
       userId,
+      ...accountScope.filter,
       date: { $gte: start, $lte: end },
     }).sort({ date: -1 }).lean();
 
@@ -277,8 +323,17 @@ router.get('/inbox/week', async (req, res) => {
     start.setDate(start.getDate() - 6); // last 7 days including today
     start.setHours(0,0,0,0);
 
+    const accountScope = await resolveAccountScopeFilter(
+      userId,
+      req.query.account
+    );
+    if (accountScope.empty) {
+      return res.json({ emails: [] });
+    }
+
     const emails = await Email.find({
       userId,
+      ...accountScope.filter,
       date: { $gte: start, $lte: end },
     }).sort({ date: -1 }).lean();
 
@@ -315,8 +370,17 @@ router.get("/inbox/monthly", async (req, res) => {
     start.setDate(start.getDate() - 29); // last 30 days including today
     start.setHours(0, 0, 0, 0);
 
+    const accountScope = await resolveAccountScopeFilter(
+      userId,
+      req.query.account
+    );
+    if (accountScope.empty) {
+      return res.json({ emails: [] });
+    }
+
     const emails = await Email.find({
       userId,
+      ...accountScope.filter,
       date: { $gte: start, $lte: end },
     })
       .sort({ date: -1 })

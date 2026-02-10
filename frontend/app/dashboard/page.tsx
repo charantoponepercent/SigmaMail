@@ -72,13 +72,13 @@ export default function Dashboard() {
       const data = await res.json();
       setAccounts(data.accounts || []);
       // Auto-select first account if none selected
-      if (data.accounts && data.accounts.length > 0 && !selectedAccount) {
-        setSelectedAccount(data.accounts[0].email);
-      }
+      setSelectedAccount((prev) =>
+        prev || (data.accounts && data.accounts.length > 0 ? data.accounts[0].email : prev)
+      );
     } catch (err) {
       console.error("Failed to load accounts:", err);
     }
-  }, [selectedAccount]);
+  }, []);
   const [sourceMessages, setSourceMessages] = useState<DashboardMessage[]>([]);
   const [messages, setMessages] = useState<DashboardMessage[]>([]);
   const [selectedMessage, setSelectedMessage] =
@@ -103,6 +103,7 @@ export default function Dashboard() {
   const [threadSummaryOpen, setThreadSummaryOpen] = useState(false);
   const sseRef = useRef<EventSource | null>(null);
   const activeFilterRef = useRef(activeFilter);
+  const selectedAccountRef = useRef<string | null>(selectedAccount);
 
   // Added new mail notification state and timer ref
   const [newMailCount, setNewMailCount] = useState(0);
@@ -149,6 +150,21 @@ export default function Dashboard() {
     setLoadingMessages,
     activeCategory,
   });
+  const loadTodayRef = useRef(loadToday);
+  const loadYesterdayRef = useRef(loadYesterday);
+  const loadWeekRef = useRef(loadWeek);
+  const loadMonthlyRef = useRef(loadMonthly);
+
+  useEffect(() => {
+    selectedAccountRef.current = selectedAccount;
+  }, [selectedAccount]);
+
+  useEffect(() => {
+    loadTodayRef.current = loadToday;
+    loadYesterdayRef.current = loadYesterday;
+    loadWeekRef.current = loadWeek;
+    loadMonthlyRef.current = loadMonthly;
+  }, [loadToday, loadYesterday, loadWeek, loadMonthly]);
 
   const { loadingThread, openMessage, closeThread } = useThreadLoader({
     setSelectedMessage,
@@ -282,9 +298,21 @@ export default function Dashboard() {
       );
 
       es.onmessage = (event) => {
-        const payload = JSON.parse(event.data);
+        let payload: any = null;
+        try {
+          payload = JSON.parse(event.data);
+        } catch (err) {
+          console.error("Invalid SSE payload:", err);
+          return;
+        }
 
-        if (payload.type === "NEW_EMAIL") {
+        const eventType =
+          payload?.type ||
+          (typeof payload?.data?.isRead === "boolean"
+            ? "EMAIL_READ_STATE"
+            : "NEW_EMAIL");
+
+        if (eventType === "NEW_EMAIL") {
           setNewMailCount((c) => c + 1);
           setShowNewTag(true);
 
@@ -297,21 +325,33 @@ export default function Dashboard() {
           }, 2 * 60 * 1000); // 2 minutes
 
           // 🔥 CRITICAL FIX: force fresh fetch, do NOT rely on old closures
+          const currentAccount = selectedAccountRef.current;
           if (activeFilterRef.current === "TODAY") {
-            loadToday(true, undefined, selectedAccount);
+            const decisionMap: Record<string, string> = {
+              "__NEEDS_REPLY__": "NEEDS_REPLY",
+              "__DEADLINES_TODAY__": "DEADLINES_TODAY",
+              "__OVERDUE_FOLLOWUPS__": "OVERDUE_FOLLOWUPS",
+            };
+            const decisionType =
+              currentAccount && decisionMap[currentAccount]
+                ? decisionMap[currentAccount]
+                : undefined;
+            loadTodayRef.current(true, decisionType, currentAccount);
           } else if (activeFilterRef.current === "YESTERDAY") {
-            loadYesterday(true, selectedAccount);
+            loadYesterdayRef.current(true, currentAccount);
           } else if (activeFilterRef.current === "WEEK") {
-            loadWeek(true, selectedAccount);
+            loadWeekRef.current(true, currentAccount);
           } else if (activeFilterRef.current === "MONTHLY") {
-            loadMonthly(true, selectedAccount);
+            loadMonthlyRef.current(true, currentAccount);
           }
         }
 
-        if (payload.type === "EMAIL_READ_STATE") {
+        if (eventType === "EMAIL_READ_STATE") {
+          const payloadId = String(payload?.data?.emailId || "");
+          if (!payloadId) return;
           setMessages((prev) =>
             prev.map((m) =>
-              m._id === payload.data.emailId || m.id === payload.data.emailId
+              String(m._id || m.id || "") === payloadId
                 ? { ...m, isRead: payload.data.isRead }
                 : m
             )
@@ -319,7 +359,7 @@ export default function Dashboard() {
 
           setSourceMessages((prev) =>
             prev.map((m) =>
-              m._id === payload.data.emailId || m.id === payload.data.emailId
+              String(m._id || m.id || "") === payloadId
                 ? { ...m, isRead: payload.data.isRead }
                 : m
             )
@@ -327,11 +367,15 @@ export default function Dashboard() {
         }
       };
 
+      es.onerror = (err) => {
+        console.error("SSE inbox stream error:", err);
+      };
+
       sseRef.current = es;
     }
     loadAccounts(token);
     loadOrchestratorStatus();
-  }, [router, loadAccounts]);
+  }, [router, loadAccounts, loadOrchestratorStatus]);
 
   // Helper: Is selectedAccount a special Today’s Decisions filter?
   function isDecisionFilter(account: string | null) {
