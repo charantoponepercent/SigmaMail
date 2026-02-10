@@ -32,6 +32,11 @@ export type DashboardMessage = {
   billDue?: boolean;
   hidden?: boolean;
   starred?: boolean;
+  searchScore?: number;
+  semanticScore?: number;
+  lexicalScore?: number;
+  searchWhy?: string[];
+  matchedCount?: number;
   createdAt?: string;
   count?: number;
 };

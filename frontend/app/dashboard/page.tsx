@@ -146,16 +146,27 @@ export default function Dashboard() {
     activeCategory,
   });
 
-  const { onSearchKeyDown } = useSearch({
+  const { loadingThread, openMessage, closeThread } = useThreadLoader({
+    setSelectedMessage,
+    setSelectedThreadId,
+  });
+
+  const {
+    searchQuery,
+    searchMode,
+    searchMeta,
+    previewItems,
+    clearSearch,
+    onSearchChange,
+    onSearchKeyDown,
+    onModeChange,
+    onPreviewSelect,
+  } = useSearch({
     setMessages,
     sourceMessages,
     activeCategory,
     setSearchLoading,
-  });
-
-  const { loadingThread, openMessage, closeThread } = useThreadLoader({
-    setSelectedMessage,
-    setSelectedThreadId,
+    openMessage,
   });
 
   const { goPrevThread, goNextThread } = useThreadNavigation({
@@ -470,7 +481,16 @@ export default function Dashboard() {
       <SearchCommandPalette
         open={cmdOpen}
         onClose={() => setCmdOpen(false)}
+        query={searchQuery}
+        mode={searchMode}
+        loading={searchLoading}
+        meta={searchMeta}
+        results={previewItems}
+        onQueryChange={onSearchChange}
+        onModeChange={onModeChange}
         onSearchKeyDown={onSearchKeyDown}
+        onSelectResult={onPreviewSelect}
+        onClear={clearSearch}
       />
       <Sidebar
         isSyncing={isSyncing}
@@ -489,7 +509,15 @@ export default function Dashboard() {
       {/* MAIN CONTENT AREA */}
       <div className="flex-1 m-1 flex overflow-hidden">
         <section className="border mt-1 mr-0.5 mb-3 border-gray-100 bg-white flex flex-col overflow-x-hidden rounded-xl flex-shrink-0 w-[510px]">
-          <HeaderBar onSearchKeyDown={onSearchKeyDown} />
+          <HeaderBar
+            searchQuery={searchQuery}
+            searchMode={searchMode}
+            searchMeta={searchMeta}
+            onSearchChange={onSearchChange}
+            onSearchModeChange={onModeChange}
+            onSearchClear={clearSearch}
+            onSearchKeyDown={onSearchKeyDown}
+          />
           {/* Filter Dropdown */}
           <DropFilterBar
             activeFilter={activeFilter}

@@ -92,6 +92,11 @@ export default function EmailListItem({
                 Bill Due
               </span>
             )}
+            {typeof msg.searchScore === "number" && (
+              <span className="px-2 py-0.5 text-[10px] font-medium text-indigo-700 bg-indigo-100 rounded-full flex-shrink-0">
+                Match {Math.round(msg.searchScore * 100)}%
+              </span>
+            )}
           </div>
 
           {(msg.threadAttachmentCount ?? 0) > 0 && (
