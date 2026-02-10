@@ -41,6 +41,7 @@ yarn-error.log*
 .env*
 .env
 .env.*
+!.env.example
 
 # Virtual env
 .venv/

@@ -10,8 +10,13 @@ export async function enqueueInitialSync(accountId) {
     "initial-sync",
     { accountId },
     {
-      removeOnComplete: true,
       attempts: 3,
+      backoff: {
+        type: "exponential",
+        delay: 10000,
+      },
+      removeOnComplete: { age: 24 * 60 * 60, count: 500 },
+      removeOnFail: { age: 7 * 24 * 60 * 60, count: 500 },
     }
   );
 }

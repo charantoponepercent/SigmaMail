@@ -32,17 +32,30 @@ new Worker(
     );
 
     const gmail = google.gmail({ version: "v1", auth: authClient });
+    const failedMessageIds = [];
 
     // 3️⃣ Process messages (SEQUENTIAL = SAFE)
     for (const messageId of messageIds) {
       try {
         await syncSingleMessage(gmail, messageId, account);
       } catch (err) {
+        failedMessageIds.push(messageId);
         console.error(
           `❌ Failed to sync message ${messageId} for ${account.email}`,
           err.message
         );
       }
+    }
+
+    if (failedMessageIds.length > 0) {
+      throw new Error(
+        `gmail-message-sync failed for ${failedMessageIds.length}/${messageIds.length} messages`
+      );
+    }
+
+    if (!account.initialSyncDone) {
+      account.initialSyncDone = true;
+      await account.save();
     }
   },
   {

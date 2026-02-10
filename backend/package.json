@@ -6,6 +6,9 @@
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
+    "worker:gmail-push": "node workers/gmailPush.worker.js",
+    "worker:gmail-message-sync": "node workers/gmailMessageSync.worker.js",
+    "worker:gmail-initial-sync": "node workers/gmailInitialSync.worker.js",
     "classify:samples": "node classification/testSamples.js",
     "classify:eval": "node classification/runDatasetEval.js"
   },

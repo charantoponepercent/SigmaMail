@@ -1,6 +1,13 @@
 import { google } from "googleapis";
 
 export async function startGmailWatch(account) {
+  const topicName = (process.env.GOOGLE_PUBSUB_TOPIC || "").trim();
+  if (!topicName) {
+    throw new Error(
+      "GOOGLE_PUBSUB_TOPIC is required to register Gmail push watch."
+    );
+  }
+
   const oauth2Client = new google.auth.OAuth2();
 
   oauth2Client.setCredentials({
@@ -13,7 +20,7 @@ export async function startGmailWatch(account) {
   const res = await gmail.users.watch({
     userId: "me",
     requestBody: {
-      topicName: "projects/gen-lang-client-0963198730/topics/gmail-push",
+      topicName,
       labelIds: ["INBOX"],
     },
   });

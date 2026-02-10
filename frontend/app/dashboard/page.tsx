@@ -45,7 +45,7 @@ export default function Dashboard() {
     try {
       setIsSyncing(true);
       const token = localStorage.getItem("token");
-      const res = await fetch("http://localhost:4000/api/debug/run-sync", {
+      const res = await fetch(`${API_BASE}/api/debug/run-sync`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },

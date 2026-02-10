@@ -42,11 +42,13 @@ export async function runInitialSync(accountId) {
       messageIds,
     },
     {
-      removeOnComplete: true,
+      attempts: 3,
+      backoff: {
+        type: "exponential",
+        delay: 10000,
+      },
+      removeOnComplete: { age: 24 * 60 * 60, count: 500 },
+      removeOnFail: { age: 7 * 24 * 60 * 60, count: 500 },
     }
   );
-
-  // Mark initial sync done (we don't block UI on processing)
-  account.initialSyncDone = true;
-  await account.save();
 }
