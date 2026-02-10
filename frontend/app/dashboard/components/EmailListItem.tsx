@@ -4,7 +4,7 @@
 
 import { useEffect, useState } from "react";
 
-import { Paperclip, Sparkles } from "lucide-react";
+import { Paperclip } from "lucide-react";
 import { CATEGORY_BADGE_CLASS } from "./utils/categories";
 import { DashboardMessage } from "../types";
 
@@ -56,7 +56,7 @@ export default function EmailListItem({
         selected
           ? "bg-gray-100 border border-gray-100"
           : "bg-white border-l-transparent hover:bg-gray-50 hover:border-l-gray-300 hover:shadow-sm"
-      } ${msg.aiExplanation ? "ring-1 ring-purple-100" : ""}`}
+      }`}
     >
       {/* Avatar */}
       <div className="w-10 h-10 flex-shrink-0 rounded-full border border-gray-300 text-black flex items-center justify-center text-sm font-semibold uppercase shadow-sm">
@@ -90,15 +90,6 @@ export default function EmailListItem({
             {msg.billDue && (
               <span className="px-2 py-0.5 text-[10px] font-medium text-orange-700 bg-orange-100 rounded-full flex-shrink-0">
                 Bill Due
-              </span>
-            )}
-            {msg.aiExplanation && (
-              <span
-                title={msg.aiExplanation}
-                className="flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium text-purple-700 bg-purple-100 rounded-full flex-shrink-0"
-              >
-                <Sparkles className="w-3 h-3" />
-                AI
               </span>
             )}
           </div>

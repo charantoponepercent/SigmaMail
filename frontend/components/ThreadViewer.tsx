@@ -4,7 +4,7 @@
 "use client";
 
 import React from "react";
-import { X, ChevronLeft, ChevronRight, ChevronDown, ChevronRight as ChevronRightIcon, Sparkles, Check, Lock } from "lucide-react";
+import { X, ChevronLeft, ChevronRight, ChevronDown, ChevronRight as ChevronRightIcon, Check, Lock } from "lucide-react";
 import { format } from "date-fns";
 import SecureEmailViewer from "@/components/SecureEmailViewer";
 import extractQuotedSections from "@/lib/extractQuotedSections";
@@ -53,8 +53,6 @@ interface ThreadEmail {
   signedBy?: string;
   security?: string;
   headers?: Record<string, string>;
-  aiExplanation?: string;
-  aiConfidence?: number;
 }
 
 interface ThreadViewerProps {
@@ -299,13 +297,38 @@ export default function ThreadViewer({ thread, onClose, onPrev, onNext, onCatego
             {threadCategory}
           </span>
 
-          <button
-            type="button"
-            onClick={() => setDetailsOpen((prev) => !prev)}
-            className="text-[12px] text-gray-600 underline underline-offset-2 hover:text-gray-900"
-          >
-            {detailsOpen ? "Hide Details" : "Details"}
-          </button>
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setDetailsOpen((prev) => !prev)}
+              className="text-[12px] text-gray-600 underline underline-offset-2 hover:text-gray-900"
+            >
+              {detailsOpen ? "Hide Details" : "Details"}
+            </button>
+
+            {detailsOpen && (
+              <div className="absolute left-0 top-full mt-2 w-[360px] max-w-[80vw] rounded-xl border border-gray-200 bg-white shadow-lg z-50">
+                <div className="px-3 py-2 border-b border-gray-100 text-[11px] uppercase tracking-[0.18em] text-gray-400">
+                  Details
+                </div>
+                <div className="max-h-64 overflow-y-auto px-3 py-3 text-[12px]">
+                  <div className="grid grid-cols-[90px_1fr] gap-y-2">
+                    {detailsRows.map((row) => (
+                      <React.Fragment key={row.label}>
+                        <p className="text-gray-500 font-medium">{row.label}:</p>
+                        <p className="text-gray-800 break-all">{row.value}</p>
+                      </React.Fragment>
+                    ))}
+                    <p className="text-gray-500 font-medium">Security:</p>
+                    <p className="text-gray-800 inline-flex items-center gap-2">
+                      <Lock className="h-3.5 w-3.5 text-emerald-600" />
+                      {latestMessage?.security || "—"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
 
           {latestMessageId && (
             <DropdownMenu>
@@ -341,44 +364,8 @@ export default function ThreadViewer({ thread, onClose, onPrev, onNext, onCatego
           )}
         </div>
 
-        {detailsOpen && (
-          <div className="mt-3 rounded-2xl border border-gray-200 bg-gray-50/80 px-4 py-4">
-            <div className="grid grid-cols-[110px_1fr] gap-y-2 text-[13px]">
-              {detailsRows.map((row) => (
-                <React.Fragment key={row.label}>
-                  <p className="text-gray-500 font-medium">{row.label}:</p>
-                  <p className="text-gray-800 break-all">{row.value}</p>
-                </React.Fragment>
-              ))}
-              <p className="text-gray-500 font-medium">Security:</p>
-              <p className="text-gray-800 inline-flex items-center gap-2">
-                <Lock className="h-3.5 w-3.5 text-emerald-600" />
-                {latestMessage?.security || "—"}
-              </p>
-            </div>
-          </div>
-        )}
+        
 
-        {latestMessage?.aiExplanation && (
-          <div className="mt-3 flex items-start gap-3 rounded-xl border border-purple-100 bg-purple-50/60 px-4 py-3">
-            <div className="mt-0.5">
-              <Sparkles className="w-4 h-4 text-purple-600" />
-            </div>
-            <div className="flex-1">
-              <p className="text-[13px] font-medium text-purple-800">
-                AI Insight
-              </p>
-              <p className="mt-1 text-[13px] text-purple-700 leading-relaxed">
-                {latestMessage?.aiExplanation}
-              </p>
-            </div>
-            {typeof latestMessage?.aiConfidence === "number" && (
-              <span className="ml-auto text-[11px] text-purple-600 whitespace-nowrap">
-                {Math.round(latestMessage.aiConfidence * 100)}% confident
-              </span>
-            )}
-          </div>
-        )}
       </div>
 
       {/* THREAD-LEVEL ATTACHMENTS BAR (collapsible, grouped) */}

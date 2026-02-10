@@ -4,7 +4,7 @@ import { TODAYS_DECISION_PROMPT } from "./prompts/todaysDecision.prompt.js";
 const DEFAULT_MODEL =
   process.env.AI_ORCH_MODEL ||
   process.env.GEMINI_MODEL ||
-  "gemini-3-flash-preview";
+  "gemini-2.5-flash";
 
 const TASKS = {
   summary_intent: {
@@ -19,6 +19,9 @@ const TASKS = {
   daily_digest: {
     model: DEFAULT_MODEL,
     timeoutMs: Number(process.env.AI_ORCH_TIMEOUT_DAILY_DIGEST_MS || 25000),
+    cacheTtlSec: Number(process.env.AI_ORCH_DAILY_DIGEST_TTL_SEC || 300),
+    staleCacheTtlSec: Number(process.env.AI_ORCH_DAILY_DIGEST_STALE_TTL_SEC || 86400),
+    degradedCacheTtlSec: Number(process.env.AI_ORCH_DAILY_DIGEST_DEGRADED_TTL_SEC || 90),
   },
   action_decision: {
     model: DEFAULT_MODEL,
@@ -362,8 +365,58 @@ function normalizeDigestResult(ai, payload) {
   };
 }
 
-export async function orchestrateDailyDigest({ payload }) {
+function normalizeCachedDigestEnvelope(raw) {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return null;
+
+    if (parsed.result && typeof parsed.result === "object") {
+      return {
+        result: parsed.result,
+        model: parsed.model || null,
+      };
+    }
+
+    // Backward-compat: allow directly cached digest body.
+    return {
+      result: parsed,
+      model: null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function orchestrateDailyDigest({
+  payload,
+  redisClient = null,
+  cacheKey = null,
+}) {
   const startedAt = Date.now();
+  const staleCacheKey = cacheKey ? `${cacheKey}:stale` : null;
+
+  if (redisClient && cacheKey) {
+    try {
+      const raw = await redisClient.get(cacheKey);
+      const cached = normalizeCachedDigestEnvelope(raw);
+      if (cached?.result) {
+        return {
+          ...cached.result,
+          _meta: buildMeta({
+            task: "daily_digest",
+            strategy: "cache_hit",
+            startedAt,
+            confidence: 0.99,
+            cached: true,
+            model: cached.model || TASKS.daily_digest.model,
+          }),
+        };
+      }
+    } catch {
+      // ignore cache read failures
+    }
+  }
 
   try {
     const ai = await callAI({
@@ -374,6 +427,22 @@ export async function orchestrateDailyDigest({ payload }) {
     });
 
     const normalized = normalizeDigestResult(ai, payload);
+
+    if (redisClient && cacheKey) {
+      const envelope = JSON.stringify({
+        result: normalized,
+        model: TASKS.daily_digest.model,
+      });
+      try {
+        await redisClient.set(cacheKey, envelope, "EX", TASKS.daily_digest.cacheTtlSec);
+        if (staleCacheKey) {
+          await redisClient.set(staleCacheKey, envelope, "EX", TASKS.daily_digest.staleCacheTtlSec);
+        }
+      } catch {
+        // ignore cache write failures
+      }
+    }
+
     return {
       ...normalized,
       _meta: buildMeta({
@@ -385,8 +454,43 @@ export async function orchestrateDailyDigest({ payload }) {
       }),
     };
   } catch (err) {
+    if (redisClient && staleCacheKey) {
+      try {
+        const rawStale = await redisClient.get(staleCacheKey);
+        const stale = normalizeCachedDigestEnvelope(rawStale);
+        if (stale?.result) {
+          return {
+            ...stale.result,
+            _meta: buildMeta({
+              task: "daily_digest",
+              strategy: "cache_stale_recovery",
+              startedAt,
+              confidence: 0.7,
+              cached: true,
+              model: stale.model || TASKS.daily_digest.model,
+            }),
+          };
+        }
+      } catch {
+        // ignore stale cache read failures
+      }
+    }
+
+    const degraded = fallbackDigest(payload);
+    if (redisClient && cacheKey) {
+      try {
+        const envelope = JSON.stringify({
+          result: degraded,
+          model: "local-route",
+        });
+        await redisClient.set(cacheKey, envelope, "EX", TASKS.daily_digest.degradedCacheTtlSec);
+      } catch {
+        // ignore degraded cache write failures
+      }
+    }
+
     return {
-      ...fallbackDigest(payload),
+      ...degraded,
       _meta: buildMeta({
         task: "daily_digest",
         strategy: "fallback",

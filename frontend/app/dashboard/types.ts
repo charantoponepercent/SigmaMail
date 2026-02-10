@@ -28,7 +28,6 @@ export type DashboardMessage = {
   threadAttachmentCount?: number;
   unreadCount?: number;
   isRead?: boolean;
-  aiExplanation?: string;
   priority?: boolean;
   billDue?: boolean;
   hidden?: boolean;

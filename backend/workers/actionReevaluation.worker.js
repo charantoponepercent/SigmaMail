@@ -3,9 +3,6 @@ import "../config/db.js";
 import Email from "../models/Email.js";
 import { evaluateActions } from "../actions/index.js";
 
-import { orchestrateActionDecision } from "../ai/orchestrator.js";
-import { recordOrchestratorStatus } from "../ai/orchestratorTelemetry.js";
-
 console.log("🚀 ActionReevaluation.worker loaded");
 
 /**
@@ -48,40 +45,18 @@ export async function runActionReevaluation() {
     // 1️⃣ Heuristic evaluation (existing logic)
     const heuristicActionData = evaluateActions(email, threadMeta);
 
-    // 2️⃣ Orchestrated AI decision (with gating + fallback)
-    const aiResult = await orchestrateActionDecision({
-      email: {
-        subject: email.subject,
-        text: email.text,
-        from: email.from,
-        to: email.to,
-        date: email.date,
-      },
-      heuristics: heuristicActionData,
-    });
-
-    if (aiResult?._meta && email?.userId) {
-      await recordOrchestratorStatus({
-        userId: email.userId.toString(),
-        meta: aiResult._meta,
-        context: { emailId: email._id?.toString?.() || "" },
-      });
-    }
-
-    // 3️⃣ Merge heuristic + AI results
+    // 2️⃣ Heuristic-only mode: disable per-email LLM calls to avoid credit burn
     const finalActionData = {
       ...heuristicActionData,
-      aiNeedsReply: aiResult.aiNeedsReply,
-      aiHasDeadline: aiResult.aiHasDeadline,
-      aiIsOverdueFollowUp: aiResult.aiIsOverdueFollowUp,
-      aiConfidence: aiResult.aiConfidence,
-      aiExplanation: aiResult.aiExplanation,
-      aiEvaluatedAt: new Date(),
+      aiNeedsReply: null,
+      aiHasDeadline: null,
+      aiIsOverdueFollowUp: null,
+      aiConfidence: null,
+      aiExplanation: null,
+      aiEvaluatedAt: null,
     };
 
-    // console.log("Final Action Data : ",finalActionData)
-
-    // 4️⃣ Persist
+    // 3️⃣ Persist
     await Email.updateOne(
       { _id: email._id },
       { $set: finalActionData }

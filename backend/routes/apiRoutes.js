@@ -1,5 +1,6 @@
 // backend/routes/apiRoutes.js
 import express from "express";
+import { createHash } from "node:crypto";
 import EmailAccount from "../models/EmailAccount.js";
 import { requireAuth } from "../middleware/requireAuth.js";
 import { runGmailSyncForUser } from "../workers/gmailSyncWorker.js";
@@ -738,7 +739,20 @@ router.post("/ai/daily-digest", async (req, res) => {
       emails: cleanedEmails,
     };
 
-    const result = await orchestrateDailyDigest({ payload });
+    const digestSignatureSource = cleanedEmails
+      .map((e) => `${String(e.id || "")}:${new Date(e.date || 0).getTime()}`)
+      .join("|");
+    const digestFingerprint = createHash("sha1")
+      .update(`${userId}|${filteredEmails.length}|${digestSignatureSource}`)
+      .digest("hex")
+      .slice(0, 16);
+    const digestCacheKey = `ai:daily-digest:v3:${userId}:${digestFingerprint}`;
+
+    const result = await orchestrateDailyDigest({
+      payload,
+      redisClient: redis,
+      cacheKey: digestCacheKey,
+    });
     if (result?._meta) {
       await recordOrchestratorStatus({
         userId: req.user.id,

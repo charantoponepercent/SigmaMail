@@ -7,11 +7,9 @@
  * - Handle timeouts / failures gracefully
  */
 
-import { GoogleGenerativeAI } from "@google/generative-ai";
-
-const DEFAULT_MODEL = process.env.GEMINI_MODEL || "gemini-3-flash-preview";
+const DEFAULT_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 const DEFAULT_TIMEOUT_MS = Number(process.env.GEMINI_TIMEOUT_MS || 12000);
-const FALLBACK_MODELS = (process.env.GEMINI_FALLBACK_MODELS || "gemini-3-flash-preview")
+const FALLBACK_MODELS = (process.env.GEMINI_FALLBACK_MODELS || "gemini-2.5-flash")
   .split(",")
   .map((m) => m.trim())
   .filter(Boolean);
@@ -30,6 +28,9 @@ function normalizeGeminiError(err) {
   }
   if (msg.includes("PERMISSION_DENIED")) {
     return "Gemini access denied for this model";
+  }
+  if (/quota exceeded|rate limit/i.test(msg)) {
+    return "Gemini quota exceeded";
   }
   if (msg.includes("NOT_FOUND") || msg.includes("404")) {
     return "Gemini model not found";
@@ -80,6 +81,11 @@ function buildCandidateModels(model) {
   return out;
 }
 
+function cleanModelName(modelName = "") {
+  if (!modelName) return DEFAULT_MODEL;
+  return modelName.startsWith("models/") ? modelName.slice("models/".length) : modelName;
+}
+
 function extractJson(raw = "") {
   const text = String(raw || "").trim();
   if (!text) {
@@ -118,6 +124,58 @@ function extractJson(raw = "") {
   throw new Error("Gemini returned non-JSON output");
 }
 
+async function requestGeminiViaRest({ apiKey, modelName, prompt, signal }) {
+  const cleanModel = cleanModelName(modelName);
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(cleanModel)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    signal,
+    body: JSON.stringify({
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      generationConfig: {
+        temperature: 0,
+        responseMimeType: "application/json",
+      },
+    }),
+  });
+
+  const rawBody = await res.text();
+  let parsed;
+  try {
+    parsed = rawBody ? JSON.parse(rawBody) : {};
+  } catch {
+    parsed = null;
+  }
+
+  if (!res.ok) {
+    const apiMessage =
+      parsed?.error?.message ||
+      (typeof rawBody === "string" ? rawBody.slice(0, 240) : `status ${res.status}`);
+    throw new Error(apiMessage);
+  }
+
+  const parts = parsed?.candidates?.[0]?.content?.parts;
+  const text = Array.isArray(parts)
+    ? parts
+        .map((p) => (typeof p?.text === "string" ? p.text : ""))
+        .join("")
+        .trim()
+    : "";
+
+  if (!text) {
+    const blockReason = parsed?.promptFeedback?.blockReason;
+    if (blockReason) {
+      throw new Error(`Gemini blocked response: ${blockReason}`);
+    }
+    throw new Error("Empty Gemini response");
+  }
+
+  return text;
+}
+
 /**
  * Call Gemini with a system prompt and user payload.
  * Must return parsed JSON.
@@ -149,7 +207,6 @@ IMPORTANT:
 - Do NOT include explanations outside JSON
 `;
 
-  const genAI = new GoogleGenerativeAI(apiKey);
   const models = buildCandidateModels(model);
   let lastError = "unknown_error";
 
@@ -163,16 +220,12 @@ IMPORTANT:
       const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
       try {
-        const generativeModel = genAI.getGenerativeModel({
-          model: modelName,
-          generationConfig: { temperature: 0 },
-        });
-
-        const result = await generativeModel.generateContent(prompt, {
+        const raw = await requestGeminiViaRest({
+          apiKey,
+          modelName,
+          prompt,
           signal: controller.signal,
         });
-
-        const raw = result?.response?.text?.();
         const parsed = extractJson(raw);
         return parsed;
       } catch (err) {
