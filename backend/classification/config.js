@@ -5,6 +5,7 @@ export const CLASSIFICATION_WEIGHTS = {
   semantic: Number(process.env.CLASSIFIER_W_SEMANTIC) || 0.25,
   structural: Number(process.env.CLASSIFIER_W_STRUCTURAL) || 0.25,
   exclusion: Number(process.env.CLASSIFIER_W_EXCLUSION) || 0.15,
+  feedback: Number(process.env.CLASSIFIER_W_FEEDBACK) || 0.35,
 };
 
 export const STRUCTURAL_THRESHOLDS = {

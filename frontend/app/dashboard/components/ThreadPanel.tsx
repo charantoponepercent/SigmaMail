@@ -2,14 +2,16 @@
 
 import ThreadViewer from "@/components/ThreadViewer";
 import ThreadSkeleton from "@/app/dashboard/ThreadSkeleton";
+import { DashboardThread } from "../types";
 
 type Props = {
   loadingThread: boolean;
-  selectedMessage: any;
+  selectedMessage: DashboardThread | null;
   selectedThreadId: string | null;
   goPrevThread: () => void;
   goNextThread: () => void;
   onClose: () => void;
+  onCategoryFeedback: (emailId: string, category: string) => Promise<void>;
 };
 
 export default function ThreadPanel({
@@ -19,6 +21,7 @@ export default function ThreadPanel({
   goPrevThread,
   goNextThread,
   onClose,
+  onCategoryFeedback,
 }: Props) {
   return (
     <section
@@ -33,6 +36,7 @@ export default function ThreadPanel({
             onClose={onClose}
             onPrev={goPrevThread}
             onNext={goNextThread}
+            onCategoryFeedback={onCategoryFeedback}
           />
         ) : (
           <div className="h-full flex flex-col items-center justify-center text-center text-gray-400 px-6">

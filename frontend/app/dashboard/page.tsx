@@ -20,48 +20,10 @@ import ThreadPanel from "./components/ThreadPanel";
 import { formatDate, cleanSubject, getAvatarInitial } from "./components/utils/mailUtils";
 import { useThreadLoader } from "./hooks/useThreadLoader";
 import DigestModal from "./components/DigestModal";
+import { DashboardMessage, DashboardThread } from "./types";
 
 type DashboardUser = { id: string; name: string };
 type DashboardAccount = { _id: string; email: string };
-type ThreadAttachment = {
-  filename: string;
-  mimeType: string;
-  storageUrl?: string;
-  messageId?: string;
-  emailId?: string;
-};
-type DashboardMessage = {
-  priority: any;
-  billDue: any;
-  snippet: any;
-  preview: any;
-  category: string;
-  accountEmail: any;
-  to: any;
-  attachments: { filename: string; mimeType: string; storageUrl?: string }[];
-  threadAttachmentCount?: number;
-  starred: any;
-  id: string;
-  _id?: string;
-  messageId?: string;
-  threadId?: string;
-  subject: string;
-  from: string;
-  date?: string;
-  body?: string;
-  hidden?: boolean;
-  count?: number;
-};
-
-
-type DashboardThread = {
-  messages?: DashboardMessage[];
-  threadId?: string;
-  account?: string;
-  attachments?: ThreadAttachment[];
-  threadAttachmentCount?: number;
-};
-
 export default function Dashboard() {
   const router = useRouter();
 
@@ -132,6 +94,28 @@ export default function Dashboard() {
   const [showNewTag, setShowNewTag] = useState(false);
   const newMailTimerRef = useRef<NodeJS.Timeout | null>(null);
 
+  const applyCategoryLocally = useCallback((emailId: string, category: string) => {
+    const patchMessage = (msg: DashboardMessage) => {
+      const msgId = msg._id || msg.id;
+      if (msgId !== emailId) return msg;
+      return { ...msg, category };
+    };
+
+    setMessages((prev) => prev.map(patchMessage));
+    setSourceMessages((prev) => prev.map(patchMessage));
+    setSelectedMessage((prev) => {
+      if (!prev?.messages) return prev;
+      return {
+        ...prev,
+        messages: prev.messages.map((msg: DashboardMessage) => {
+          const msgId = msg._id || msg.id;
+          if (msgId !== emailId) return msg;
+          return { ...msg, category };
+        }),
+      };
+    });
+  }, []);
+
   useEffect(() => {
     activeFilterRef.current = activeFilter;
   }, [activeFilter]);
@@ -167,6 +151,39 @@ export default function Dashboard() {
     selectedAccount,
     openMessage,
   });
+
+  const onCategoryFeedback = useCallback(async (emailId: string, category: string) => {
+    applyCategoryLocally(emailId, category);
+    const token = localStorage.getItem("token");
+
+    try {
+      const res = await fetch(`${API_BASE}/api/emails/${emailId}/category-feedback`, {
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        method: "POST",
+        body: JSON.stringify({ category }),
+      });
+
+      if (!res.ok) {
+        let message = `Request failed with status ${res.status}`;
+        try {
+          const data = await res.json();
+          if (data?.error) message = data.error;
+        } catch {
+          // ignore non-JSON body
+        }
+        throw new Error(message);
+      }
+    } catch (err) {
+      console.error("Category feedback failed:", err);
+      if (activeFilter === "TODAY") loadToday(true);
+      if (activeFilter === "YESTERDAY") loadYesterday(true);
+      if (activeFilter === "WEEK") loadWeek(true);
+      if (activeFilter === "MONTHLY") loadMonthly(true);
+    }
+  }, [activeFilter, applyCategoryLocally, loadMonthly, loadToday, loadWeek, loadYesterday]);
 
 
   useEffect(() => {
@@ -443,6 +460,7 @@ export default function Dashboard() {
           selectedThreadId={selectedThreadId}
           goPrevThread={goPrevThread}
           goNextThread={goNextThread}
+          onCategoryFeedback={onCategoryFeedback}
           onClose={closeThread}
         />
       </div>

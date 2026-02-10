@@ -6,8 +6,11 @@ import { requireAuth } from "../middleware/requireAuth.js";
 import { runGmailSyncForUser } from "../workers/gmailSyncWorker.js";
 import Email from "../models/Email.js";
 import Thread from "../models/Thread.js";
+import mongoose from "mongoose";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import Redis from "ioredis";
+import { recordCategorizationFeedback } from "../classification/feedbackLearning.js";
+import { CATEGORIZATION_RULES } from "../classification/categorizationRules.js";
 
 const router = express.Router();
 
@@ -300,6 +303,83 @@ router.get("/inbox/monthly", async (req, res) => {
   } catch (err) {
     console.error("Error loading monthly inbox:", err);
     res.status(500).json({ error: "Failed to load monthly inbox" });
+  }
+});
+
+router.post("/emails/:id/category-feedback", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { category } = req.body || {};
+    const userId = req.user.id;
+
+    if (!category || !CATEGORIZATION_RULES.CATEGORY_LIST.includes(category)) {
+      return res.status(400).json({ error: "Invalid category provided" });
+    }
+
+    const lookupOr = [
+      { messageId: id },
+      { threadId: id },
+    ];
+
+    if (mongoose.Types.ObjectId.isValid(id)) {
+      lookupOr.unshift({ _id: id });
+    }
+
+    // Primary resolution by identifier (robust for legacy rows where userId/account links are inconsistent)
+    let email = await Email.findOne({
+      $or: lookupOr,
+    }).sort({ date: -1 });
+
+    // Fallback for legacy rows where Email.userId may be missing/misaligned:
+    // resolve email first, then verify it belongs to one of the user's accounts.
+    if (!email) {
+      const fallbackEmail = await Email.findOne({
+        $or: lookupOr,
+      }).sort({ date: -1 });
+
+      if (fallbackEmail?.accountId) {
+        const ownedAccount = await EmailAccount.findOne({
+          _id: fallbackEmail.accountId,
+          userId,
+        }).lean();
+
+        if (ownedAccount) {
+          email = fallbackEmail;
+          if (!email.userId || String(email.userId) !== String(userId)) {
+            email.userId = userId;
+          }
+        }
+      }
+    }
+
+    if (!email) {
+      return res.status(404).json({ error: `Email not found for id: ${id}` });
+    }
+
+    // Keep data aligned for future strict lookups.
+    if (!email.userId || String(email.userId) !== String(userId)) {
+      email.userId = userId;
+    }
+
+    await recordCategorizationFeedback({
+      userId,
+      email,
+      correctedCategory: category,
+    });
+
+    email.category = category;
+    email.categoryScore = 1;
+    await email.save();
+
+    return res.json({
+      ok: true,
+      message: "Feedback recorded and category updated",
+      emailId: email._id,
+      category,
+    });
+  } catch (err) {
+    console.error("Category feedback error:", err);
+    return res.status(500).json({ error: "Failed to record category feedback" });
   }
 });
 
@@ -836,6 +916,3 @@ ${JSON.stringify(payload, null, 2)}
 });
 
 export default router;
-
-
-

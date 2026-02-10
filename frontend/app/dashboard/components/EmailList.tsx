@@ -2,9 +2,10 @@
 
 import EmailListItem from "./EmailListItem";
 import { Loader2 } from "lucide-react";
+import { DashboardMessage } from "../types";
 
 type Props = {
-  messages: any[];
+  messages: DashboardMessage[];
   loadingMessages: boolean;
   searchLoading: boolean;
   selectedThreadId: string | null;

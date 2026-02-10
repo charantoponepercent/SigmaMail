@@ -1,14 +1,16 @@
 "use client";
 
 import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { CATEGORY_OPTIONS } from "./utils/categories";
+import { DashboardMessage } from "../types";
 
 type Props = {
   activeFilter: string;
   setActiveFilter: (v: string) => void;
   activeCategory: string;
   setActiveCategory: (v: string) => void;
-  sourceMessages: any[];
-  setMessages: (msgs: any[]) => void;
+  sourceMessages: DashboardMessage[];
+  setMessages: (msgs: DashboardMessage[]) => void;
 };
 
 export default function DropFilterBar({
@@ -72,14 +74,14 @@ export default function DropFilterBar({
                 setMessages(
                   cat === "All"
                     ? sourceMessages
-                    : sourceMessages.map((msg) => ({
+                    : sourceMessages.map((msg: DashboardMessage) => ({
                         ...msg,
                         hidden: msg.category !== cat,
                       }))
                 );
               }}
             >
-              {["All","Work","Finance","Bills","Personal","Travel","Promotions","Updates","Social","Shopping","Priority","Spam"]
+              {["All", ...CATEGORY_OPTIONS]
                 .map((cat) => (
                   <DropdownMenuRadioItem key={cat} value={cat}>
                     {cat}

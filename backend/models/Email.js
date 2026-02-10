@@ -28,7 +28,15 @@ const EmailSchema = new mongoose.Schema(
     to: String,
     cc: String,
     bcc: String,
+    replyTo: String,
     date: Date,
+    mailedBy: String,
+    signedBy: String,
+    security: String,
+    headers: {
+      type: Object,
+      default: {},
+    },
 
     textBody: String,
     htmlBodyRaw: String,

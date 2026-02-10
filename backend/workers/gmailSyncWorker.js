@@ -12,6 +12,96 @@ import cloudinary from '../config/cloudinary.js';
 import { inboxEvents } from "../events/inboxEvents.js";
 import { evaluateActions } from "../actions/index.js";
 
+function buildHeaderMap(headers = []) {
+  const map = {};
+  for (const h of headers) {
+    const key = (h?.name || "").trim();
+    if (!key) continue;
+    const value = (h?.value || "").trim();
+    if (!map[key]) map[key] = value;
+    else map[key] = `${map[key]}\n${value}`;
+  }
+  return map;
+}
+
+function getHeaderCaseInsensitive(headerMap = {}, key = "") {
+  const target = key.toLowerCase();
+  for (const [k, v] of Object.entries(headerMap || {})) {
+    if (k.toLowerCase() === target) return v;
+  }
+  return "";
+}
+
+function extractEmail(value = "") {
+  const angle = value.match(/<([^>]+)>/);
+  if (angle?.[1]) return angle[1].trim();
+  const plain = value.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[A-Za-z]{2,}/);
+  return plain?.[0] || "";
+}
+
+function deriveMailedBy(headerMap = {}) {
+  const returnPath = getHeaderCaseInsensitive(headerMap, "Return-Path");
+  const sender = getHeaderCaseInsensitive(headerMap, "Sender");
+  const from = getHeaderCaseInsensitive(headerMap, "From");
+  const auth = getHeaderCaseInsensitive(headerMap, "Authentication-Results");
+
+  const fromAuth = auth.match(/smtp\.mailfrom=([^\s;]+)/i)?.[1];
+  if (fromAuth) return fromAuth.replace(/[<>]/g, "");
+
+  return (
+    extractEmail(returnPath) ||
+    extractEmail(sender) ||
+    extractEmail(from) ||
+    ""
+  );
+}
+
+function deriveSignedBy(headerMap = {}) {
+  const auth = getHeaderCaseInsensitive(headerMap, "Authentication-Results");
+  const dkim = getHeaderCaseInsensitive(headerMap, "DKIM-Signature");
+
+  const headerD = auth.match(/header\.d=([^\s;]+)/i)?.[1];
+  if (headerD) return headerD.replace(/[<>]/g, "");
+
+  const headerI = auth.match(/header\.i=@([^\s;]+)/i)?.[1];
+  if (headerI) return headerI.replace(/[<>]/g, "");
+
+  const dkimD = dkim.match(/\bd=([a-z0-9.-]+\.[a-z]{2,})/i)?.[1];
+  if (dkimD) return dkimD.toLowerCase();
+
+  return "";
+}
+
+function deriveSecurity(headerMap = {}) {
+  const auth = [
+    getHeaderCaseInsensitive(headerMap, "Authentication-Results"),
+    getHeaderCaseInsensitive(headerMap, "ARC-Authentication-Results"),
+  ]
+    .join(" ")
+    .toLowerCase();
+  const received = getHeaderCaseInsensitive(headerMap, "Received").toLowerCase();
+  const transportBlob = `${auth} ${received}`;
+
+  if (/tls|ssl|esmtps/.test(transportBlob)) {
+    return "Standard encryption (TLS)";
+  }
+
+  if (/dkim=pass|spf=pass|dmarc=pass/.test(auth)) {
+    return "Authenticated";
+  }
+
+  return "—";
+}
+
+function buildDeliveryMetadata(headerMap = {}) {
+  return {
+    replyTo: getHeaderCaseInsensitive(headerMap, "Reply-To") || "",
+    mailedBy: deriveMailedBy(headerMap) || "",
+    signedBy: deriveSignedBy(headerMap) || "",
+    security: deriveSecurity(headerMap),
+  };
+}
+
 // Main Sync Function
 export async function runGmailSyncForUser(userId) {
   const accounts = await EmailAccount.find({ userId });
@@ -68,6 +158,8 @@ export async function syncSingleMessage(gmail, messageId, account) {
   // 3. Extract Headers & Directionality
   const headers = payload.headers || [];
   const find = (n) => headers.find((h) => h.name.toLowerCase() === n.toLowerCase())?.value || '';
+  const headerMap = buildHeaderMap(headers);
+  const deliveryMeta = buildDeliveryMetadata(headerMap);
   const composedBody = finalHtml || (textBody ? `<pre>${textBody}</pre>` : "");
 
   const fromHeader = find("From") || "";
@@ -233,7 +325,10 @@ export async function syncSingleMessage(gmail, messageId, account) {
       from: find("From"),
       text: composedBody,
       plainText: textBody || "",
+      headers: headerMap,
       embedding: embeddingVector
+    }, {
+      userId: account.userId,
     });
   } catch (err) {
     console.error("❌ classifyEmailFull failed:", err);
@@ -253,7 +348,14 @@ export async function syncSingleMessage(gmail, messageId, account) {
       subject: find('Subject'),
       from: find('From'),
       to: find('To'),
+      cc: find("Cc"),
+      bcc: find("Bcc"),
+      replyTo: deliveryMeta.replyTo,
       date: new Date(find('Date')),
+      mailedBy: deliveryMeta.mailedBy,
+      signedBy: deliveryMeta.signedBy,
+      security: deliveryMeta.security,
+      headers: headerMap,
       isIncoming,
 
       textBody,

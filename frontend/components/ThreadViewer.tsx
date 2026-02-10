@@ -4,12 +4,21 @@
 "use client";
 
 import React from "react";
-import { X, ChevronLeft, ChevronRight, ChevronDown, ChevronRight as ChevronRightIcon, Sparkles } from "lucide-react";
+import { X, ChevronLeft, ChevronRight, ChevronDown, ChevronRight as ChevronRightIcon, Sparkles, Check, Lock } from "lucide-react";
 import { format } from "date-fns";
 import SecureEmailViewer from "@/components/SecureEmailViewer";
 import extractQuotedSections from "@/lib/extractQuotedSections";
 import AttachmentPreviewModal from "@/components/AttachmentPreviewModal";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { CATEGORY_BADGE_CLASS, CATEGORY_OPTIONS } from "@/app/dashboard/components/utils/categories";
 
 interface ThreadAttachment {
   filename: string;
@@ -26,15 +35,24 @@ interface ThreadEmail {
   _id?: string;
   messageId?: string;
   id?: string;
+  threadId?: string;
   date?: string;
   from?: string;
   to?: string;
+  cc?: string;
+  bcc?: string;
+  replyTo?: string;
   subject?: string;
+  category?: string;
   body?: string;
   htmlBodyProcessed?: string;
   htmlBodyRaw?: string;
   textBody?: string;
   account?: string;
+  mailedBy?: string;
+  signedBy?: string;
+  security?: string;
+  headers?: Record<string, string>;
   aiExplanation?: string;
   aiConfidence?: number;
 }
@@ -49,6 +67,7 @@ interface ThreadViewerProps {
   onClose: () => void;
   onPrev: () => void;
   onNext: () => void;
+  onCategoryFeedback: (emailId: string, category: string) => Promise<void> | void;
 }
 
 function getAvatarInitial(fromField?: string): string {
@@ -75,7 +94,14 @@ function getAvatarInitial(fromField?: string): string {
   return "M";
 }
 
-export default function ThreadViewer({ thread, onClose, onPrev, onNext }: ThreadViewerProps) {
+function extractPrimaryEmail(value = ""): string {
+  const angle = value.match(/<([^>]+)>/);
+  if (angle?.[1]) return angle[1].trim();
+  const plain = value.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[A-Za-z]{2,}/);
+  return plain?.[0] || "";
+}
+
+export default function ThreadViewer({ thread, onClose, onPrev, onNext, onCategoryFeedback }: ThreadViewerProps) {
   type Attachment = {
     filename: string;
     mimeType: string;
@@ -88,6 +114,8 @@ export default function ThreadViewer({ thread, onClose, onPrev, onNext }: Thread
   const [openMessage, setOpenMessage] = useState<number | null>(null);
   const [attachmentsOpen, setAttachmentsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"images" | "docs" | "others">("images");
+  const [savingCategory, setSavingCategory] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const toggleMessage = (index: number) => {
     setOpenMessage(prev => (prev === index ? null : index));
   };
@@ -153,10 +181,49 @@ export default function ThreadViewer({ thread, onClose, onPrev, onNext }: Thread
     (a, b) => (a.date ? new Date(a.date).getTime() : 0) - (b.date ? new Date(b.date).getTime() : 0)
   );
   const enableCollapse = sorted.length > 2;
-
+  const latestMessage = sorted[sorted.length - 1];
+  const latestMessageId = latestMessage?._id || latestMessage?.id || latestMessage?.messageId;
+  const threadCategory = latestMessage?.category || "General";
 
   const accountEmail =
     thread.account || (sorted[0] && sorted[0].account) || "";
+
+  const applyCategoryFromThread = async (category: string) => {
+    if (!latestMessageId || savingCategory) return;
+    setSavingCategory(true);
+    try {
+      await onCategoryFeedback(latestMessageId, category);
+    } finally {
+      setSavingCategory(false);
+    }
+  };
+
+  const formatDetailsDate = (value?: string) => {
+    if (!value) return "—";
+    try {
+      return format(new Date(value), "MMM d, yyyy, h:mm:ss a");
+    } catch {
+      return value;
+    }
+  };
+
+  const inferredMailedBy = latestMessage?.mailedBy || extractPrimaryEmail(latestMessage?.from || "");
+  const inferredSignedBy = latestMessage?.signedBy || (
+    inferredMailedBy.includes("@") ? inferredMailedBy.split("@")[1] : ""
+  );
+
+  const detailsRows = [
+    { label: "From", value: latestMessage?.from || "—" },
+    { label: "To", value: latestMessage?.to || "—" },
+    { label: "Date", value: formatDetailsDate(latestMessage?.date) },
+    { label: "Mailed-By", value: inferredMailedBy || "—" },
+    { label: "Signed-By", value: inferredSignedBy || "—" },
+    { label: "Message-ID", value: latestMessage?.messageId || latestMessage?.id || "—" },
+  ];
+
+  useEffect(() => {
+    setDetailsOpen(false);
+  }, [latestMessageId]);
 
   return (
     <div className="flex flex-col h-full overflow-hidden bg-white">
@@ -200,14 +267,14 @@ export default function ThreadViewer({ thread, onClose, onPrev, onNext }: Thread
           {sorted[sorted.length - 1].subject || "(No Subject)"}
         </h1>
 
-        <div className="mt-2 flex items-center gap-3">
+        <div className="mt-2 flex flex-wrap items-center gap-3">
           <span
             className="inline-flex items-center gap-2 text-[12px] border text-black px-2 py-1 rounded-full"
-            title={sorted[sorted.length - 1].from || ""}
+            title={latestMessage?.from || ""}
           >
             {(() => {
               const raw =
-                (sorted[sorted.length - 1].from || "")
+                (latestMessage?.from || "")
                   .split("<")[0]
                   .trim()
                   .replace(/["']/g, ""); // remove quotes
@@ -225,9 +292,74 @@ export default function ThreadViewer({ thread, onClose, onPrev, onNext }: Thread
               );
             })()}
           </span>
+
+          <span
+            className={`inline-flex items-center px-2.5 py-1 text-[11px] font-medium rounded-full ${CATEGORY_BADGE_CLASS[threadCategory] || CATEGORY_BADGE_CLASS.General}`}
+          >
+            {threadCategory}
+          </span>
+
+          <button
+            type="button"
+            onClick={() => setDetailsOpen((prev) => !prev)}
+            className="text-[12px] text-gray-600 underline underline-offset-2 hover:text-gray-900"
+          >
+            {detailsOpen ? "Hide Details" : "Details"}
+          </button>
+
+          {latestMessageId && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  disabled={savingCategory}
+                  className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-[11px] font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+                >
+                  {savingCategory ? "Saving..." : "Correct Category"}
+                  <ChevronDown className="h-3.5 w-3.5" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-56">
+                <DropdownMenuLabel className="text-xs text-gray-500 font-normal">
+                  Mark this thread as
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {CATEGORY_OPTIONS.map((cat) => (
+                  <DropdownMenuItem
+                    key={cat}
+                    onClick={() => applyCategoryFromThread(cat)}
+                    className="cursor-pointer"
+                  >
+                    <span className="text-sm">{cat}</span>
+                    {cat === threadCategory && (
+                      <Check className="ml-auto h-4 w-4 text-emerald-600" />
+                    )}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
 
-        {sorted[sorted.length - 1].aiExplanation && (
+        {detailsOpen && (
+          <div className="mt-3 rounded-2xl border border-gray-200 bg-gray-50/80 px-4 py-4">
+            <div className="grid grid-cols-[110px_1fr] gap-y-2 text-[13px]">
+              {detailsRows.map((row) => (
+                <React.Fragment key={row.label}>
+                  <p className="text-gray-500 font-medium">{row.label}:</p>
+                  <p className="text-gray-800 break-all">{row.value}</p>
+                </React.Fragment>
+              ))}
+              <p className="text-gray-500 font-medium">Security:</p>
+              <p className="text-gray-800 inline-flex items-center gap-2">
+                <Lock className="h-3.5 w-3.5 text-emerald-600" />
+                {latestMessage?.security || "—"}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {latestMessage?.aiExplanation && (
           <div className="mt-3 flex items-start gap-3 rounded-xl border border-purple-100 bg-purple-50/60 px-4 py-3">
             <div className="mt-0.5">
               <Sparkles className="w-4 h-4 text-purple-600" />
@@ -237,12 +369,12 @@ export default function ThreadViewer({ thread, onClose, onPrev, onNext }: Thread
                 AI Insight
               </p>
               <p className="mt-1 text-[13px] text-purple-700 leading-relaxed">
-                {sorted[sorted.length - 1].aiExplanation}
+                {latestMessage?.aiExplanation}
               </p>
             </div>
-            {typeof sorted[sorted.length - 1].aiConfidence === "number" && (
+            {typeof latestMessage?.aiConfidence === "number" && (
               <span className="ml-auto text-[11px] text-purple-600 whitespace-nowrap">
-                {Math.round(sorted[sorted.length - 1].aiConfidence * 100)}% confident
+                {Math.round(latestMessage.aiConfidence * 100)}% confident
               </span>
             )}
           </div>

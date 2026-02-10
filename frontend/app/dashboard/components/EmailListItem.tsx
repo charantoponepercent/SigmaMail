@@ -1,14 +1,15 @@
 /* eslint-disable react-hooks/set-state-in-effect */
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 "use client";
 
 import { useEffect, useState } from "react";
 
 import { Paperclip, Sparkles } from "lucide-react";
+import { CATEGORY_BADGE_CLASS } from "./utils/categories";
+import { DashboardMessage } from "../types";
 
 type Props = {
-  msg: any;
+  msg: DashboardMessage;
   selected: boolean;
   onClick: () => void;
   cleanSubject: (s?: string) => string;
@@ -140,31 +141,7 @@ export default function EmailListItem({
         <div className="flex items-center gap-2 flex-wrap">
           {/* Category badge */}
           <span
-            className={`px-2 py-1.5 text-[10px] font-medium rounded-2xl ${
-              msg.category === "Work"
-                ? "bg-blue-100 text-blue-700"
-                : msg.category === "Finance"
-                ? "bg-green-100 text-green-700"
-                : msg.category === "Bills"
-                ? "bg-orange-100 text-orange-700"
-                : msg.category === "Personal"
-                ? "bg-purple-100 text-purple-700"
-                : msg.category === "Travel"
-                ? "bg-cyan-100 text-cyan-700"
-                : msg.category === "Promotions"
-                ? "bg-pink-100 text-pink-700"
-                : msg.category === "Updates"
-                ? "bg-gray-100 text-gray-700"
-                : msg.category === "Social"
-                ? "bg-yellow-100 text-yellow-700"
-                : msg.category === "Shopping"
-                ? "bg-emerald-100 text-emerald-700"
-                : msg.category === "Priority"
-                ? "bg-red-100 text-red-700"
-                : msg.category === "Spam"
-                ? "bg-red-200 text-red-900"
-                : "bg-gray-100 text-gray-700"
-            }`}
+            className={`px-2 py-1.5 text-[10px] font-medium rounded-2xl ${CATEGORY_BADGE_CLASS[msg.category] || CATEGORY_BADGE_CLASS.General}`}
           >
             {msg.category || "General"}
           </span>

@@ -4,6 +4,7 @@ import CATEGORIZATION_RULES from "./categorizationRules.js";
 import { generateEmbedding } from "../utils/embedding.js";
 import { CLASSIFICATION_WEIGHTS, CATEGORY_PRIORS, CLASSIFIER_FEATURE_FLAGS, STRUCTURAL_THRESHOLDS } from "./config.js";
 import { getCategoryEmbeddings } from "./categoryCache.js";
+import { computeFeedbackScoresForEmail } from "./feedbackLearning.js";
 
 /**
  * Unified classification engine
@@ -248,13 +249,14 @@ async function semanticSimilarity(embedding) {
  * mergeScores
  * - Accepts raw layer scores and returns normalized candidate list + top
  */
-function mergeScores({ heuristic, phrase, semantic, exclusion, structural, weights, priors }) {
+function mergeScores({ heuristic, phrase, semantic, exclusion, structural, feedback, weights, priors }) {
   const W = {
     HEURISTIC: weights?.heuristic ?? CLASSIFICATION_WEIGHTS.heuristic,
     PHRASE: weights?.phrase ?? CLASSIFICATION_WEIGHTS.phrase,
     SEMANTIC: weights?.semantic ?? CLASSIFICATION_WEIGHTS.semantic,
     EXCLUSION: weights?.exclusion ?? CLASSIFICATION_WEIGHTS.exclusion,
     STRUCTURAL: weights?.structural ?? CLASSIFICATION_WEIGHTS.structural,
+    FEEDBACK: weights?.feedback ?? CLASSIFICATION_WEIGHTS.feedback,
   };
 
   const fusedRaw = {};
@@ -264,6 +266,7 @@ function mergeScores({ heuristic, phrase, semantic, exclusion, structural, weigh
     const s = semantic?.[cat] || 0;
     const e = exclusion?.[cat] || 0;
     const str = structural?.[cat] || 0;
+    const fb = feedback?.[cat] || 0;
     const prior = priors?.[cat] ?? CATEGORY_PRIORS[cat] ?? 0;
 
     // combine: heuristic/phrase are counts (small ints), semantic is cosine [-1..1], exclusion is penalty/boost
@@ -274,6 +277,7 @@ function mergeScores({ heuristic, phrase, semantic, exclusion, structural, weigh
       + (W.SEMANTIC * semanticScaled)
       + (W.EXCLUSION * e)
       + (W.STRUCTURAL * str)
+      + (W.FEEDBACK * fb)
       + prior;
   });
 
@@ -339,6 +343,10 @@ export async function classifyEmailFull(email = {}, options = {}) {
 
   // 6) Structural newsletter/spam signals (post-heuristic, pre-fusion)
   const structural = extractStructuralSignals(email);
+  const feedback = await computeFeedbackScoresForEmail({
+    userId: options.userId || null,
+    email,
+  });
 
   // 7) Merge with tunable weights
   const merged = mergeScores({
@@ -347,6 +355,7 @@ export async function classifyEmailFull(email = {}, options = {}) {
     semantic,
     exclusion,
     structural,
+    feedback,
     weights: appliedWeights,
     priors: appliedPriors,
   });
@@ -361,6 +370,7 @@ export async function classifyEmailFull(email = {}, options = {}) {
     semantic,
     exclusion,
     structural,
+    feedback,
     debug: {
       weights: appliedWeights,
       fusedRaw: merged.fusedRaw,
