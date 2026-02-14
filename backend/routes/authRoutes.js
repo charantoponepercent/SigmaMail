@@ -8,6 +8,7 @@ import User from "../models/User.js";
 import EmailAccount from "../models/EmailAccount.js";
 import { enqueueInitialSync } from "../queues/gmailInitialSync.queue.js";
 import { startGmailWatch } from "../services/gmailWatch.service.js";
+import { shouldUseRedisForQueues } from "../utils/redis.js";
 
 dotenv.config();
 const router = express.Router();
@@ -144,7 +145,11 @@ router.get("/google/callback", async (req, res) => {
 
     // 🔥 Trigger initial Gmail sync in background (BullMQ)
     if (!account.initialSyncDone) {
-      await enqueueInitialSync(account._id);
+      if (shouldUseRedisForQueues()) {
+        await enqueueInitialSync(account._id);
+      } else {
+        console.warn("⚠️ Skipped initial sync enqueue because Redis queues are disabled.");
+      }
     }
 
     // console.log(`✅ Gmail connected: ${gmailAddress} → User: ${appUser.email}`);

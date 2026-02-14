@@ -3,13 +3,15 @@ import "../config/db.js";
 
 import { Worker } from "bullmq";
 import { google } from "googleapis";
-import { redis } from "../utils/redis.js";
+import { getRedisClient } from "../utils/redis.js";
 
 import EmailAccount from "../models/EmailAccount.js";
 import { getAuthorizedClientForAccount } from "../utils/googleClient.js";
 
 // 🔥 IMPORTANT: import your EXISTING function
 import { syncSingleMessage } from "./gmailSyncWorker.js";
+
+const redis = getRedisClient({ required: true, purpose: "gmail-message-sync worker" });
 
 
 new Worker(

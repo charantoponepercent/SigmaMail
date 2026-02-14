@@ -11,12 +11,28 @@ import "./config/db.js";
 import gmailWebhook from "./routes/gmailWebhook.js";
 import { inboxEvents } from "./events/inboxEvents.js";
 import { Worker } from "bullmq";
-import { redis } from "./utils/redis.js";
-import { scheduleActionReevaluation } from "./schedulers/actionReevaluation.scheduler.js";
+import {
+  closeRedis,
+  getRedisClient,
+  getRedisStatus,
+  shouldUseRedisForCache,
+  shouldUseRedisForQueues,
+  shouldUseRedisForSseBridge,
+  shouldUseRedisForTelemetry,
+} from "./utils/redis.js";
+import {
+  scheduleActionReevaluation,
+  stopActionReevaluationScheduler,
+} from "./schedulers/actionReevaluation.scheduler.js";
 
 
 dotenv.config();
 const DEBUG_REALTIME = true;
+const redisExpected =
+  shouldUseRedisForQueues() ||
+  shouldUseRedisForSseBridge() ||
+  shouldUseRedisForCache() ||
+  shouldUseRedisForTelemetry();
 
 const app = express();
 app.set("trust proxy", 1);
@@ -82,14 +98,24 @@ app.get("/health", (req, res) => {
 
 app.get("/ready", (req, res) => {
   const mongoReady = mongoose.connection.readyState === 1;
-  const redisReady = redis.status === "ready";
+  const redisStatus = getRedisStatus();
+  const redisReady =
+    !redisExpected ||
+    redisStatus === "ready" ||
+    redisStatus === "not-initialized";
   const ready = mongoReady && redisReady;
 
   res.status(ready ? 200 : 503).json({
     status: ready ? "ready" : "degraded",
     checks: {
       mongo: mongoReady ? "ready" : "not-ready",
-      redis: redisReady ? "ready" : redis.status || "not-ready",
+      redis: redisExpected
+        ? redisStatus === "not-initialized"
+          ? "lazy"
+          : redisReady
+            ? "ready"
+            : redisStatus || "not-ready"
+        : "disabled",
     },
     timestamp: new Date().toISOString(),
   });
@@ -149,35 +175,40 @@ app.get("/api-sse/sse/inbox", (req, res) => {
   });
 });
 
-// 🔁 BullMQ → SSE bridge (runs in API process)
-const sseWorker = new Worker(
-  "sse-events",
-  async (job) => {
-    const rawUserId = job?.data?.userId;
-    if (!rawUserId) return;
+let sseWorker = null;
+if (shouldUseRedisForSseBridge()) {
+  const redis = getRedisClient({ required: true, purpose: "sse bridge worker" });
+  sseWorker = new Worker(
+    "sse-events",
+    async (job) => {
+      const rawUserId = job?.data?.userId;
+      if (!rawUserId) return;
 
-    const eventType = job?.name || "NEW_EMAIL";
-    if (DEBUG_REALTIME) {
-      console.log("[Realtime] Queue -> SSE", {
-        eventType,
+      const eventType = job?.name || "NEW_EMAIL";
+      if (DEBUG_REALTIME) {
+        console.log("[Realtime] Queue -> SSE", {
+          eventType,
+          userId: String(rawUserId),
+        });
+      }
+      inboxEvents.emit("inbox", {
+        type: eventType,
         userId: String(rawUserId),
+        data: job?.data?.data || null,
       });
-    }
-    inboxEvents.emit("inbox", {
-      type: eventType,
-      userId: String(rawUserId),
-      data: job?.data?.data || null,
-    });
-  },
-  { connection: redis }
-);
+    },
+    { connection: redis }
+  );
+} else {
+  console.log("ℹ️ SSE queue bridge is disabled (REDIS_SSE_BRIDGE_ENABLED=false).");
+}
 
 const PORT = process.env.PORT || 4000;
 // ----------------------------------------
 // Schedule Action Re-evaluation (once)
 // ----------------------------------------
 try {
-  await scheduleActionReevaluation();
+  scheduleActionReevaluation();
 } catch (error) {
   console.error("⚠️ Failed to schedule action re-evaluation:", error);
 }
@@ -188,13 +219,16 @@ const server = app.listen(PORT, () => {
 
 async function shutdown(signal) {
   console.log(`\n${signal} received. Shutting down gracefully...`);
+  stopActionReevaluationScheduler();
   try {
-    await sseWorker.close();
+    if (sseWorker) {
+      await sseWorker.close();
+    }
   } catch (error) {
     console.error("Error closing worker:", error);
   }
   try {
-    await redis.quit();
+    await closeRedis();
   } catch (error) {
     console.error("Error closing Redis:", error);
   }

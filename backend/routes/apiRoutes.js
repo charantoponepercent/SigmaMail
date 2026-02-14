@@ -12,7 +12,7 @@ import {
   propagateCategoryToRelatedEmails,
 } from "../classification/feedbackLearning.js";
 import { CATEGORIZATION_RULES } from "../classification/categorizationRules.js";
-import { redis } from "../utils/redis.js";
+import { getRedisClient, shouldUseRedisForCache } from "../utils/redis.js";
 import {
   orchestrateDailyDigest,
   orchestrateSummaryIntent,
@@ -25,6 +25,11 @@ import {
 } from "../ai/orchestratorTelemetry.js";
 
 const router = express.Router();
+
+function getAiCacheRedisClient() {
+  if (!shouldUseRedisForCache()) return null;
+  return getRedisClient({ purpose: "ai cache" });
+}
 
 // Use real JWT-based authentication for all API routes
 router.use(requireAuth);
@@ -595,7 +600,7 @@ router.post("/ai/summarize-thread", async (req, res) => {
     const summary = await orchestrateThreadSummary({
       threadId,
       messages,
-      redisClient: redis,
+      redisClient: getAiCacheRedisClient(),
     });
 
     if (summary?._meta) {
@@ -892,7 +897,7 @@ router.post("/ai/daily-digest", async (req, res) => {
 
     const result = await orchestrateDailyDigest({
       payload,
-      redisClient: redis,
+      redisClient: getAiCacheRedisClient(),
       cacheKey: digestCacheKey,
     });
     if (result?._meta) {

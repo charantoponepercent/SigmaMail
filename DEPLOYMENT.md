@@ -29,6 +29,10 @@ This project is a monorepo:
    - `NODE_ENV=production`
    - `MONGO_URI`
    - `REDIS_URL`
+   - `REDIS_QUEUE_ENABLED=true` (required for BullMQ workers/webhooks)
+   - `REDIS_CACHE_ENABLED=false` (optional, enables AI cache in Redis)
+   - `REDIS_TELEMETRY_ENABLED=false` (optional, enables orchestrator telemetry in Redis)
+   - `REDIS_SSE_BRIDGE_ENABLED=false` (optional, enables BullMQ -> SSE bridge in API process)
    - `JWT_SECRET`
    - `GOOGLE_CLIENT_ID`
    - `GOOGLE_CLIENT_SECRET`
@@ -40,7 +44,7 @@ This project is a monorepo:
 5. Deploy and verify:
    - `GET https://<render-embedding-domain>/health` returns `200`.
    - `GET https://<render-backend-domain>/health` returns `200`.
-   - `GET https://<render-backend-domain>/ready` returns `200` when Mongo + Redis are ready.
+   - `GET https://<render-backend-domain>/ready` returns `200` when Mongo is ready (and Redis too, if Redis-backed features are enabled).
    - Worker service logs show active BullMQ workers without crash loops.
    - Gmail webhook endpoint is reachable: `POST https://<render-backend-domain>/api-push/webhooks/gmail`.
 

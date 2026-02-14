@@ -1,7 +1,10 @@
 import "dotenv/config";
 import "../config/db.js";
 import BullMQ from "bullmq";
-import { redis } from "../utils/redis.js";
+import {
+  getRedisClient,
+  shouldUseRedisForSseBridge,
+} from "../utils/redis.js";
 import { google } from "googleapis";
 import EmailAccount from "../models/EmailAccount.js";
 import { getAuthorizedClientForAccount } from "../utils/googleClient.js";
@@ -11,9 +14,16 @@ import Thread from "../models/Thread.js";
 
 const { Worker, Queue } = BullMQ;
 const DEBUG_REALTIME = true;
+const redis = getRedisClient({ required: true, purpose: "gmail-push worker" });
+const sseBridgeEnabled = shouldUseRedisForSseBridge();
 
 // QueueScheduler is not required in BullMQ v4+
-const sseQueue = new Queue("sse-events", { connection: redis });
+const sseQueue = sseBridgeEnabled
+  ? new Queue("sse-events", { connection: redis })
+  : null;
+if (!sseBridgeEnabled) {
+  console.log("ℹ️ SSE queue publishing is disabled (REDIS_SSE_BRIDGE_ENABLED=false).");
+}
 
 
 new Worker(
@@ -148,15 +158,17 @@ new Worker(
         }
       );
       // 🔔 Queue SSE event for read/unread change
-      await sseQueue.add("EMAIL_READ_STATE", {
-        userId: email.userId.toString(),
-        data: {
-          emailId: email._id,
-          threadId: email.threadId,
-          isRead,
-        },
-      });
-      if (DEBUG_REALTIME) {
+      if (sseQueue) {
+        await sseQueue.add("EMAIL_READ_STATE", {
+          userId: email.userId.toString(),
+          data: {
+            emailId: email._id,
+            threadId: email.threadId,
+            isRead,
+          },
+        });
+      }
+      if (DEBUG_REALTIME && sseQueue) {
         console.log("[Realtime] queued EMAIL_READ_STATE", {
           userId: String(email.userId),
           threadId: email.threadId,
@@ -181,11 +193,13 @@ new Worker(
       if (!emailDoc) continue;
 
 
-      await sseQueue.add("NEW_EMAIL", {
-        userId: account.userId.toString(),
-        data: emailDoc,
-      });
-      if (DEBUG_REALTIME) {
+      if (sseQueue) {
+        await sseQueue.add("NEW_EMAIL", {
+          userId: account.userId.toString(),
+          data: emailDoc,
+        });
+      }
+      if (DEBUG_REALTIME && sseQueue) {
         console.log("[Realtime] queued NEW_EMAIL", {
           userId: String(account.userId),
           threadId: emailDoc.threadId,

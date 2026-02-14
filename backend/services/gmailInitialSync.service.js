@@ -2,11 +2,21 @@ import { google } from "googleapis";
 import EmailAccount from "../models/EmailAccount.js";
 import { getAuthorizedClientForAccount } from "../utils/googleClient.js";
 import { Queue } from "bullmq";
-import { redis } from "../utils/redis.js";
+import { getRedisClient, shouldUseRedisForQueues } from "../utils/redis.js";
 
-const messageSyncQueue = new Queue("gmail-message-sync", {
-  connection: redis,
-});
+let messageSyncQueue = null;
+
+function getMessageSyncQueue() {
+  if (messageSyncQueue) return messageSyncQueue;
+  if (!shouldUseRedisForQueues()) {
+    throw new Error("Redis queues are disabled. Cannot enqueue message sync jobs.");
+  }
+  const redis = getRedisClient({ required: true, purpose: "gmail-message-sync queue" });
+  messageSyncQueue = new Queue("gmail-message-sync", {
+    connection: redis,
+  });
+  return messageSyncQueue;
+}
 
 const INITIAL_LIMIT = 120;
 
@@ -35,7 +45,8 @@ export async function runInitialSync(accountId) {
   }
 
   // 🔥 Hand off to the worker from Step 2
-  await messageSyncQueue.add(
+  const queue = getMessageSyncQueue();
+  await queue.add(
     "sync-messages",
     {
       accountId: account._id,

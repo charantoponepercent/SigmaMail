@@ -1,12 +1,23 @@
 import { Queue } from "bullmq";
-import { redis } from "../utils/redis.js";
+import { getRedisClient, shouldUseRedisForQueues } from "../utils/redis.js";
 
-export const gmailInitialSyncQueue = new Queue("gmail-initial-sync", {
-  connection: redis,
-});
+let gmailInitialSyncQueue = null;
+
+function getGmailInitialSyncQueue() {
+  if (gmailInitialSyncQueue) return gmailInitialSyncQueue;
+  if (!shouldUseRedisForQueues()) {
+    throw new Error("Redis queues are disabled. Cannot enqueue initial sync jobs.");
+  }
+  const redis = getRedisClient({ required: true, purpose: "gmail-initial-sync queue" });
+  gmailInitialSyncQueue = new Queue("gmail-initial-sync", {
+    connection: redis,
+  });
+  return gmailInitialSyncQueue;
+}
 
 export async function enqueueInitialSync(accountId) {
-  await gmailInitialSyncQueue.add(
+  const queue = getGmailInitialSyncQueue();
+  await queue.add(
     "initial-sync",
     { accountId },
     {

@@ -1,5 +1,6 @@
 import express from "express";
 import { enqueueGmailPushJob } from "../queues/gmailPush.queue.js";
+import { shouldUseRedisForQueues } from "../utils/redis.js";
 
 const router = express.Router();
 const DEBUG_REALTIME = true;
@@ -7,6 +8,10 @@ const DEBUG_REALTIME = true;
 // Pub/Sub pushes JSON
 router.post("/gmail", async (req, res) => {
   try {
+    if (!shouldUseRedisForQueues()) {
+      return res.status(204).end();
+    }
+
     const msg = req.body?.message;
     if (!msg?.data) {
       return res.status(204).end();

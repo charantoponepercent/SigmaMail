@@ -2,8 +2,10 @@ import "dotenv/config";
 import "../config/db.js";
 
 import { Worker } from "bullmq";
-import { redis } from "../utils/redis.js";
+import { getRedisClient } from "../utils/redis.js";
 import { runInitialSync } from "../services/gmailInitialSync.service.js";
+
+const redis = getRedisClient({ required: true, purpose: "gmail-initial-sync worker" });
 
 
 new Worker(

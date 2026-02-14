@@ -1,18 +1,21 @@
-import { Queue, Worker } from "bullmq";
-import { redis } from "../utils/redis.js";
-import { runActionReevaluation } from "../workers/actionReevaluation.worker.js";
+import { Queue } from "bullmq";
+import { getRedisClient, shouldUseRedisForQueues } from "../utils/redis.js";
 
-// Queue
-export const actionReevaluationQueue = new Queue("action-reevaluation", {
-  connection: redis,
-});
+let actionReevaluationQueue = null;
 
-// Worker
-console.log("🚀 Action Reevaluation Worker file loaded");
-export const actionReevaluationWorker = new Worker(
-  "action-reevaluation",
-  async () => {
-    await runActionReevaluation();
-  },
-  { connection: redis }
-);
+export function getActionReevaluationQueue() {
+  if (actionReevaluationQueue) return actionReevaluationQueue;
+  if (!shouldUseRedisForQueues()) {
+    throw new Error("Redis queues are disabled. Cannot enqueue action reevaluation jobs.");
+  }
+  const redis = getRedisClient({ required: true, purpose: "action-reevaluation queue" });
+  actionReevaluationQueue = new Queue("action-reevaluation", {
+    connection: redis,
+  });
+  return actionReevaluationQueue;
+}
+
+export async function enqueueActionReevaluationJob(data = {}, options = {}) {
+  const queue = getActionReevaluationQueue();
+  await queue.add("action-reevaluation", data, options);
+}
