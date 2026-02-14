@@ -1,6 +1,9 @@
 import express from "express";
 import { enqueueGmailPushJob } from "../queues/gmailPush.queue.js";
-import { shouldUseRedisForQueues } from "../utils/redis.js";
+import {
+  isRedisLimitExceededError,
+  shouldUseRedisForQueues,
+} from "../utils/redis.js";
 
 const router = express.Router();
 const DEBUG_REALTIME = true;
@@ -24,7 +27,16 @@ router.post("/gmail", async (req, res) => {
     }
 
     // payload: { emailAddress, historyId }
-    await enqueueGmailPushJob(payload);
+    try {
+      await enqueueGmailPushJob(payload);
+    } catch (err) {
+      if (isRedisLimitExceededError(err)) {
+        // Avoid Pub/Sub retry storms while Redis is over quota.
+        console.warn("⚠️ Skipping gmail-push enqueue due to Redis request limit.");
+        return res.status(204).end();
+      }
+      throw err;
+    }
 
     res.status(204).end(); // IMPORTANT: Pub/Sub expects 2xx
   } catch (err) {

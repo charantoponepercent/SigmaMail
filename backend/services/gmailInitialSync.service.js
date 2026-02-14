@@ -3,6 +3,7 @@ import EmailAccount from "../models/EmailAccount.js";
 import { getAuthorizedClientForAccount } from "../utils/googleClient.js";
 import { Queue } from "bullmq";
 import { getRedisClient, shouldUseRedisForQueues } from "../utils/redis.js";
+import { syncSingleMessage } from "../workers/gmailSyncWorker.js";
 
 let messageSyncQueue = null;
 
@@ -20,7 +21,27 @@ function getMessageSyncQueue() {
 
 const INITIAL_LIMIT = 120;
 
-export async function runInitialSync(accountId) {
+async function runInitialSyncInline({ account, gmail, messageIds }) {
+  let synced = 0;
+  for (const messageId of messageIds) {
+    try {
+      await syncSingleMessage(gmail, messageId, account);
+      synced += 1;
+    } catch (err) {
+      console.error(
+        `❌ Inline initial sync failed for message ${messageId} (${account.email}):`,
+        err?.message || err
+      );
+    }
+  }
+
+  account.initialSyncDone = true;
+  await account.save();
+
+  return { mode: "inline", synced };
+}
+
+export async function runInitialSync(accountId, { forceInline = false } = {}) {
   const account = await EmailAccount.findById(accountId);
   if (!account || account.initialSyncDone) return;
 
@@ -44,22 +65,35 @@ export async function runInitialSync(accountId) {
     return;
   }
 
-  // 🔥 Hand off to the worker from Step 2
-  const queue = getMessageSyncQueue();
-  await queue.add(
-    "sync-messages",
-    {
-      accountId: account._id,
-      messageIds,
-    },
-    {
-      attempts: 3,
-      backoff: {
-        type: "exponential",
-        delay: 10000,
+  if (forceInline || !shouldUseRedisForQueues()) {
+    return runInitialSyncInline({ account, gmail, messageIds });
+  }
+
+  try {
+    // Normal mode: hand off to dedicated worker
+    const queue = getMessageSyncQueue();
+    await queue.add(
+      "sync-messages",
+      {
+        accountId: account._id,
+        messageIds,
       },
-      removeOnComplete: { age: 24 * 60 * 60, count: 500 },
-      removeOnFail: { age: 7 * 24 * 60 * 60, count: 500 },
-    }
-  );
+      {
+        attempts: 3,
+        backoff: {
+          type: "exponential",
+          delay: 10000,
+        },
+        removeOnComplete: { age: 24 * 60 * 60, count: 500 },
+        removeOnFail: { age: 7 * 24 * 60 * 60, count: 500 },
+      }
+    );
+    return { mode: "queued", enqueued: messageIds.length };
+  } catch (err) {
+    console.warn(
+      "⚠️ Initial sync queue enqueue failed. Falling back to inline sync:",
+      err?.message || err
+    );
+    return runInitialSyncInline({ account, gmail, messageIds });
+  }
 }

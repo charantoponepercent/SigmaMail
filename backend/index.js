@@ -13,6 +13,7 @@ import { inboxEvents } from "./events/inboxEvents.js";
 import { Worker } from "bullmq";
 import {
   closeRedis,
+  getConfiguredRedisHost,
   getRedisClient,
   getRedisStatus,
   shouldUseRedisForCache,
@@ -33,6 +34,13 @@ const redisExpected =
   shouldUseRedisForSseBridge() ||
   shouldUseRedisForCache() ||
   shouldUseRedisForTelemetry();
+console.log("ℹ️ Redis feature flags", {
+  redisHost: getConfiguredRedisHost(),
+  queues: shouldUseRedisForQueues(),
+  cache: shouldUseRedisForCache(),
+  telemetry: shouldUseRedisForTelemetry(),
+  sseBridge: shouldUseRedisForSseBridge(),
+});
 
 const app = express();
 app.set("trust proxy", 1);

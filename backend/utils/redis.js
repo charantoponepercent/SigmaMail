@@ -18,6 +18,14 @@ const REDIS_SSE_BRIDGE_ENABLED = parseBooleanEnv("REDIS_SSE_BRIDGE_ENABLED", fal
 let redisClient = null;
 let missingUrlWarningShown = false;
 
+function getRedisHostLabel() {
+  try {
+    return new URL(rawRedisUrl).host;
+  } catch {
+    return "invalid-redis-url";
+  }
+}
+
 function ensureRedisClient({ required = false, purpose = "general" } = {}) {
   if (redisClient) return redisClient;
 
@@ -36,6 +44,9 @@ function ensureRedisClient({ required = false, purpose = "general" } = {}) {
   redisClient = new IORedis(rawRedisUrl, {
     maxRetriesPerRequest: null,
   });
+  console.log(`ℹ️ Redis client initialized for ${purpose}`, {
+    host: getRedisHostLabel(),
+  });
 
   redisClient.on("error", (err) => {
     console.warn("⚠️ Redis client error:", err?.message || err);
@@ -50,6 +61,11 @@ export function getRedisClient(options = {}) {
 
 export function isRedisConfigured() {
   return !!rawRedisUrl;
+}
+
+export function getConfiguredRedisHost() {
+  if (!rawRedisUrl) return "not-configured";
+  return getRedisHostLabel();
 }
 
 export function shouldUseRedisForQueues() {
@@ -71,6 +87,14 @@ export function shouldUseRedisForSseBridge() {
 export function getRedisStatus() {
   if (!redisClient) return "not-initialized";
   return redisClient.status || "unknown";
+}
+
+export function isRedisLimitExceededError(error) {
+  const msg = String(error?.message || error || "").toLowerCase();
+  return (
+    msg.includes("max requests limit exceeded") ||
+    msg.includes("requests limit exceeded")
+  );
 }
 
 export async function closeRedis() {

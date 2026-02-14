@@ -8,7 +8,11 @@ import User from "../models/User.js";
 import EmailAccount from "../models/EmailAccount.js";
 import { enqueueInitialSync } from "../queues/gmailInitialSync.queue.js";
 import { startGmailWatch } from "../services/gmailWatch.service.js";
-import { shouldUseRedisForQueues } from "../utils/redis.js";
+import { runInitialSync } from "../services/gmailInitialSync.service.js";
+import {
+  isRedisLimitExceededError,
+  shouldUseRedisForQueues,
+} from "../utils/redis.js";
 
 dotenv.config();
 const router = express.Router();
@@ -146,9 +150,30 @@ router.get("/google/callback", async (req, res) => {
     // 🔥 Trigger initial Gmail sync in background (BullMQ)
     if (!account.initialSyncDone) {
       if (shouldUseRedisForQueues()) {
-        await enqueueInitialSync(account._id);
+        try {
+          await enqueueInitialSync(account._id);
+        } catch (err) {
+          // Do not block OAuth success on Redis queue limits.
+          console.warn(
+            "⚠️ Initial sync queue unavailable in OAuth callback. Falling back to inline sync.",
+            err?.message || err
+          );
+          const forceInline = isRedisLimitExceededError(err);
+          void runInitialSync(account._id, { forceInline }).catch((inlineErr) => {
+            console.error(
+              "❌ Fallback initial sync failed after queue enqueue error:",
+              inlineErr?.message || inlineErr
+            );
+          });
+        }
       } else {
-        console.warn("⚠️ Skipped initial sync enqueue because Redis queues are disabled.");
+        // Redis queues disabled: still perform initial sync without queue.
+        void runInitialSync(account._id, { forceInline: true }).catch((inlineErr) => {
+          console.error(
+            "❌ Inline initial sync failed while queues are disabled:",
+            inlineErr?.message || inlineErr
+          );
+        });
       }
     }
 

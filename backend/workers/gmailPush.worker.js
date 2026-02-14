@@ -2,6 +2,7 @@ import "dotenv/config";
 import "../config/db.js";
 import BullMQ from "bullmq";
 import {
+  getConfiguredRedisHost,
   getRedisClient,
   shouldUseRedisForSseBridge,
 } from "../utils/redis.js";
@@ -14,6 +15,10 @@ import Thread from "../models/Thread.js";
 
 const { Worker, Queue } = BullMQ;
 const DEBUG_REALTIME = true;
+console.log("ℹ️ gmail-push worker redis config", {
+  redisHost: getConfiguredRedisHost(),
+  sseBridgeEnabled: shouldUseRedisForSseBridge(),
+});
 const redis = getRedisClient({ required: true, purpose: "gmail-push worker" });
 const sseBridgeEnabled = shouldUseRedisForSseBridge();
 
